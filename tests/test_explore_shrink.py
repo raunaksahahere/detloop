@@ -151,6 +151,20 @@ def test_shrink_budget_exhaustion_is_reported(in_root: None) -> None:
     assert sr.final.signature == sr.original.signature
 
 
+def test_shrink_without_any_candidate_still_verifies(in_root: None) -> None:
+    """Regression: with no accepted candidate, the strict re-run must be compared
+    against a baseline recorded under the shrinker's (tightened) config."""
+    spec = spec_of(sim_targets.test_racy_counter)
+    seed = next(
+        s for s in range(30) if detloop.run(spec.fn, seed=s, config=spec.config).status == "fail"
+    )
+    sr = shrink(spec, seed, config=spec.config, max_runs=1)
+    assert sr.status == "budget_exhausted"
+    assert sr.final.signature == sr.original.signature
+    faults_before, faults_after = sr.metrics()["faults"]
+    assert faults_before == faults_after  # no candidate was tried
+
+
 def test_shrinking_a_passing_seed_is_rejected() -> None:
     spec = spec_of(sim_targets.test_always_passes)
     with pytest.raises(detloop.ReplayMismatch):

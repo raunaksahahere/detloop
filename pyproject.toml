@@ -86,7 +86,7 @@ include = [
     "/examples",
     "/docs",
     "/scripts",
-    "/benchmarks/README.md",
+    "/benchmarks",
     "/README.md",
     "/CHANGELOG.md",
     "/CONTRIBUTING.md",
@@ -134,8 +134,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "PLR", "B011", "PT011", "PT012", "PT018", "SIM117", "RUF001", "RUF006", "B018", "E501"]
 "examples/**" = ["S", "PLC0415"]
-"benchmarks/**" = ["S", "PLC0415", "T20"]
-"scripts/**" = ["S", "PLC0415", "T20"]
+# Scripts and benchmarks are tooling, not library code: long table strings
+# and compound assertions in smoke checks are acceptable there.
+"benchmarks/**" = ["S", "T20", "E501", "PT018"]
+"scripts/**" = ["S", "T20", "E501", "PT018"]
 "src/detloop/examples/**" = ["S104"]
 
 [tool.mypy]

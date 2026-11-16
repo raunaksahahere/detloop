@@ -530,9 +530,7 @@ class World:
     def _node_error(self, node: Node, inc: Incarnation, exc: BaseException) -> None:
         failure = NodeFailure(inc.label, exc)
         self.node_errors.append(failure)
-        self.trace.emit(
-            "node_error", 1, node=inc.label, error=type(exc).__qualname__, message=str(exc)
-        )
+        self.trace.emit("node_error", 1, node=inc.label, error=type(exc).__qualname__)
         if self.config.fail_on_node_error:
             self.loop.abort(failure)
 

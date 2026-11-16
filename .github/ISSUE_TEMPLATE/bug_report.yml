@@ -1,0 +1,38 @@
+name: Bug report
+description: Something in detloop behaves incorrectly
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Seed, test code (minimal), and the exact replay command. Attach manifest.json / trace.jsonl if you can share them.
+      placeholder: |
+        detloop replay .detloop/artifacts/test_x/seed-17/manifest.json --expect-reproduce
+    validations:
+      required: true
+  - type: input
+    id: config
+    attributes:
+      label: Configuration
+      description: Decorator arguments / --set overrides, scheduler, faults
+  - type: input
+    id: versions
+    attributes:
+      label: Environment
+      description: "`detloop --version`, Python version, OS, versions of relevant libraries"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: The failure reproduces with `detloop replay --expect-reproduce` (or I explained why not)
+        - label: I removed secrets and private data from attached artifacts

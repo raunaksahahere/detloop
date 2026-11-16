@@ -796,7 +796,13 @@ class SimLoop(asyncio.AbstractEventLoop):
             self.warnings.append(f"{record['message']} ({record['exception']})")
         else:
             self.loop_errors.append(record)
-            self._trace.emit("loop_error", 1, **record)
+            self._trace.emit(
+                "loop_error",
+                1,
+                message=record["message"],
+                exception=record["exception"],
+                owner=record["owner"],
+            )
             if self._config.fail_on_loop_errors:
                 from .errors import SimulationError
 

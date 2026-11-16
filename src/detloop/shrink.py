@@ -144,8 +144,22 @@ class Shrinker:
         )
         cur_faults = schedule_from_json(original.faults)
         cur_tapes = {s: Tape.from_json(t) for s, t in original.tapes.items()}
-        best = original
         status = "fixed_point"
+        # Re-establish the baseline under the tightened config: the final strict
+        # replay is compared against `best`, whose trace header must carry the
+        # same config fingerprint.
+        best = run(
+            self.spec.fn,
+            seed=self.seed,
+            config=self.config,
+            faults=cur_faults,
+            tapes=cur_tapes,
+            decision_mode="guided",
+            keep_trace=False,
+        )
+        self.runs += 1
+        if not self._accept(best):  # pragma: no cover - tightened budgets are 2x the original
+            raise ReplayMismatch("the failure does not reproduce under the shrinker's budgets")
         try:
             while True:
                 progress = False

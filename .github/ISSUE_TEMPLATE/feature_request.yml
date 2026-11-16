@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest a capability or library compatibility improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you trying to test, and what blocks you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Determinism considerations
+      description: How would this stay inside (or explicitly outside) the determinism boundary?

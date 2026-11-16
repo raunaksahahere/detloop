@@ -292,13 +292,10 @@ def run(
                     tb_text = "".join(traceback.format_exception(exc))
                     if isinstance(exc, DeadlockError):
                         outcome["details"] = exc.pending
-                trace.emit(
-                    "end",
-                    1,
-                    status=outcome["status"][0],
-                    signature=outcome["status"][2],
-                    message=outcome["message"],
-                )
+                # The failure message is not canonical: messages of user exceptions
+                # change with tooling (e.g. pytest's assertion rewriting). It is
+                # kept in the RunResult and manifest instead.
+                trace.emit("end", 1, status=outcome["status"][0], signature=outcome["status"][2])
                 trace.seal()
                 outcome["trace_sha"] = trace.sha256()
                 outcome["trace_count"] = trace.count

@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_PYTHON_PREFERENCE: only-managed
+  PYTHONUTF8: "1"
+
+jobs:
+  build:
+    name: Build once
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - name: Tag must match the package version
+        run: |
+          version=$(uv run --no-project python -c "exec(open('src/detloop/_version.py').read()); print(__version__)")
+          test "v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != version ${version}"; exit 1; }
+          test -f "docs/releases/${GITHUB_REF_NAME}.md" || { echo "missing docs/releases/${GITHUB_REF_NAME}.md"; exit 1; }
+          grep -q "## \[${version}\]" CHANGELOG.md || { echo "CHANGELOG has no ${version} entry"; exit 1; }
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - name: Audit package contents
+        run: |
+          tar tzf dist/*.tar.gz > sdist-contents.txt
+          unzip -l dist/*.whl > wheel-contents.txt
+          if grep -Ei '\.pdf|\.detloop/|\.venv|__pycache__|\.env$' sdist-contents.txt wheel-contents.txt; then
+            echo "unexpected files in packages"; exit 1; fi
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  verify:
+    name: Verify ${{ matrix.os }} / ${{ matrix.python }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Verify checksums
+        shell: bash
+        run: cd dist && sha256sum -c SHA256SUMS
+      - name: Install the built wheel into a clean environment and test it
+        shell: bash
+        run: |
+          uv venv "$RUNNER_TEMP/env" --python "${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/env/Scripts/python.exe"; else PY="$RUNNER_TEMP/env/bin/python"; fi
+          uv pip install --python "$PY" dist/*.whl pytest hypothesis pytest-asyncio "aiohttp>=3.10,<4" "httpx>=0.27,<0.29"
+          cp scripts/smoke_installed.py "$RUNNER_TEMP/"
+          (cd "$RUNNER_TEMP" && "$PY" smoke_installed.py "${GITHUB_REF_NAME#v}")
+          rm -rf src   # the suite must exercise the installed wheel, not the checkout
+          "$PY" -m pytest -p no:cacheprovider -q
+
+  github-release:
+    name: GitHub release
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Create release (never overwrites an existing one)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists; refusing to modify it"; exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "detloop ${GITHUB_REF_NAME#v}" \
+            --notes-file "docs/releases/${GITHUB_REF_NAME}.md"
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/detloop/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Keep only the distributions
+        run: rm dist/SHA256SUMS
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

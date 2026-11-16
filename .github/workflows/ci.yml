@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_PYTHON_PREFERENCE: only-managed
+  PYTHONUTF8: "1"
+
+jobs:
+  lint:
+    name: Lint, types, docs, licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - run: uv lock --check
+      - run: uv sync --group dev --extra compat
+      - run: uv run ruff format --check src tests benchmarks scripts
+      - run: uv run ruff check src tests benchmarks scripts
+      - run: uv run mypy
+      - run: uv run python scripts/check_docs.py
+      - name: Dependency licenses (the compat extra must not pull GPL-family code)
+        run: |
+          PKGS="aiohttp httpx httpcore anyio h11 idna certifi sniffio yarl multidict frozenlist aiosignal attrs propcache aiohappyeyeballs"
+          uv run pip-licenses --packages $PKGS --format=markdown --with-urls
+          uv run pip-licenses --packages $PKGS --partial-match --fail-on="GPL;General Public License" > /dev/null
+
+  test:
+    name: Test ${{ matrix.os }} / ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --group test --extra compat
+      - run: uv run python -c "import sys, detloop; print(sys.version); print('detloop', detloop.__version__)"
+      - name: Test suite
+        run: uv run pytest -p no:cacheprovider
+      - name: Portable fixture trace hashes
+        shell: bash
+        run: uv run python scripts/fixture_hashes.py > "hashes-${{ matrix.os }}-${{ matrix.python }}.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hashes-${{ matrix.os }}-${{ matrix.python }}
+          path: hashes-${{ matrix.os }}-${{ matrix.python }}.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: detloop-artifacts-${{ matrix.os }}-${{ matrix.python }}
+          path: |
+            .detloop/
+            **/.detloop/
+          if-no-files-found: ignore
+
+  determinism:
+    name: Cross-job trace comparison
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: hashes-*
+          path: hashes
+          merge-multiple: true
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - run: uv run --no-project python scripts/compare_fixture_hashes.py hashes/*.json
+
+  build:
+    name: Build and smoke-test packages
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - name: Install wheel outside the source tree and smoke test
+        shell: bash
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-env" --python 3.12
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/wheel-env/Scripts/python.exe"; else PY="$RUNNER_TEMP/wheel-env/bin/python"; fi
+          uv pip install --python "$PY" dist/*.whl pytest
+          cp scripts/smoke_installed.py "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP" && "$PY" smoke_installed.py
+      - name: Install sdist outside the source tree and smoke test
+        shell: bash
+        run: |
+          uv venv "$RUNNER_TEMP/sdist-env" --python 3.12
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/sdist-env/Scripts/python.exe"; else PY="$RUNNER_TEMP/sdist-env/bin/python"; fi
+          uv pip install --python "$PY" dist/*.tar.gz pytest
+          cd "$RUNNER_TEMP" && "$PY" smoke_installed.py
