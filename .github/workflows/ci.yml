@@ -61,11 +61,15 @@ jobs:
         run: uv run pytest -p no:cacheprovider
       - name: Portable fixture trace hashes
         shell: bash
-        run: uv run python scripts/fixture_hashes.py > "hashes-${{ matrix.os }}-${{ matrix.python }}.json"
+        run: uv run python scripts/fixture_hashes.py --dump "fixture-traces" > "hashes-${{ matrix.os }}-${{ matrix.python }}.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.os }}-${{ matrix.python }}
           path: hashes-${{ matrix.os }}-${{ matrix.python }}.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fixture-traces-${{ matrix.os }}-${{ matrix.python }}
+          path: fixture-traces/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
