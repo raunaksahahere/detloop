@@ -44,7 +44,9 @@ teardown is never traced. The trace level never changes execution.
 
 Wall-clock time, PIDs, object addresses (replaced by `0x?`), host paths
 (replaced by `<stdlib>`, `<site-packages>`, `<prefix>`, `<cwd>`, `<home>`),
-Python/OS versions, and messages of exceptions raised by user code.
+numeric errno values (replaced by their symbolic names, e.g.
+`[Errno ECONNREFUSED]`), Python/OS versions, and messages of exceptions raised
+by user code.
 
 ## Replay manifest: `detloop-manifest/1` (JSON)
 

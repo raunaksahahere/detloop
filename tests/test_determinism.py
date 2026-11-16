@@ -144,3 +144,15 @@ def test_canonical_trace_contains_no_host_specific_data() -> None:
     assert " at 0x" not in text.replace(" at 0x?", "")
     assert ROOT not in text
     assert sys.version.split()[0] not in text
+
+
+def test_errno_numbers_are_canonicalized_in_traces() -> None:
+    import errno
+
+    from detloop.trace import sanitize_text
+
+    text = sanitize_text(
+        f"ConnectionRefusedError: [Errno {errno.ECONNREFUSED}] Connect call failed"
+    )
+    assert text == "ConnectionRefusedError: [Errno ECONNREFUSED] Connect call failed"
+    assert sanitize_text("[Errno 999999] odd") == "[Errno 999999] odd"

@@ -101,8 +101,11 @@ A seed alone is meaningful only inside this envelope.
 ## Canonical traces and hash randomization
 
 - Canonical JSONL: `sort_keys`, compact separators, ASCII, integer times.
-- Object addresses (`at 0x...`) and host path prefixes (stdlib,
-  site-packages, prefix, cwd, home) are replaced in trace text.
+- Object addresses (`at 0x...`), host path prefixes (stdlib,
+  site-packages, prefix, cwd, home) and errno numbers (`[Errno 111]` becomes
+  `[Errno ECONNREFUSED]`; the numbers differ between Linux, macOS and Windows)
+  are replaced in trace text. The errno canonicalization was added after the
+  CI cross-platform comparison caught macOS traces differing from Linux.
 - Messages of exceptions raised by user code are **not** canonical (pytest's
   assertion rewriting changes them); types and signatures are. Messages are
   kept in the manifest.

@@ -10,6 +10,7 @@ may enter canonical events; such data goes into the manifest's ``metadata``.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import math
@@ -22,6 +23,14 @@ from typing import Any
 from ._version import TRACE_SCHEMA
 
 _ADDR_RE = re.compile(r" at 0x[0-9a-fA-F]+")
+_ERRNO_RE = re.compile(r"\[Errno (\d+)\]")
+
+
+def _errno_name(m: re.Match[str]) -> str:
+    # errno numbers are host-specific (ECONNREFUSED is 111 on Linux, 61 on macOS)
+    return f"[Errno {errno.errorcode.get(int(m.group(1)), m.group(1))}]"
+
+
 _MAX_TEXT = 2000
 
 LEVELS = {"off": 0, "basic": 1, "full": 2}
@@ -62,6 +71,8 @@ def sanitize_text(text: str) -> str:
     """Remove object addresses and host paths, and bound the length of trace text."""
     global _PREFIXES
     text = _ADDR_RE.sub(" at 0x?", text)
+    if "[Errno " in text:
+        text = _ERRNO_RE.sub(_errno_name, text)
     if _PREFIXES is None:
         _PREFIXES = _host_prefixes()
     for prefix, token in _PREFIXES:
