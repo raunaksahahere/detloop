@@ -6,6 +6,7 @@ without turning the suite red."""
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
@@ -22,9 +23,14 @@ CORPUS = {
     "test_kv_lost_ack": (60, "linearizability"),
     "test_kv_split_brain": (60, "invariant:election-safety"),
 }
-#: Fixed regression seeds (first failing seed found by exploration at the time
-#: of writing). Exploration below is the real evidence; these pin behaviour.
-REGRESSION_SEEDS = {"test_kv_stale_read": 1, "test_kv_lost_ack": 0, "test_kv_split_brain": 17}
+#: Fixed regression seeds: the first failing seed found by exploration when
+#: this was written. Python 3.11's asyncio schedules a different number of
+#: internal callbacks than 3.12+, so the same seed explores a different
+#: interleaving there; pinned seeds are therefore per runtime family.
+#: Exploration above is the real evidence; these pin known reproductions.
+_SEEDS_312_PLUS = {"test_kv_stale_read": 1, "test_kv_lost_ack": 0, "test_kv_split_brain": 17}
+_SEEDS_311 = {"test_kv_stale_read": 0, "test_kv_lost_ack": 4, "test_kv_split_brain": 6}
+REGRESSION_SEEDS = _SEEDS_311 if sys.version_info < (3, 12) else _SEEDS_312_PLUS
 BASELINE_BUDGET = 40
 
 

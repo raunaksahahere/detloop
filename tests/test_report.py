@@ -80,12 +80,14 @@ def test_report_from_manifest_contains_replay_and_timeline(tmp_path: Path) -> No
     assert spec is not None
     r = explore(
         spec,
-        [1],
+        range(20),
         target=Target("detloop.examples.kv_sim", "test_kv_stale_read"),
         artifacts_dir=str(tmp_path),
+        max_failures=1,
     )
+    assert r.first_failure is not None
     out = tmp_path / "r.html"
-    render_report(r.artifacts[1], str(out))
+    render_report(r.artifacts[r.first_failure], str(out))
     html = out.read_text()
     assert "detloop replay" in html and "test_kv_stale_read" in html
     assert len(html) < 16 * 1024 * 1024

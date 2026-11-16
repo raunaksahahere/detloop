@@ -13,7 +13,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import sys
 from collections.abc import Iterator
 from typing import Any
 
@@ -26,9 +28,45 @@ LEVELS = {"off": 0, "basic": 1, "full": 2}
 _RESERVED = frozenset({"i", "k", "t"})
 
 
+def _host_prefixes() -> list[tuple[str, str]]:
+    """Host-specific directory prefixes replaced in trace text (longest first)."""
+    import site
+    import sysconfig
+
+    found: dict[str, str] = {}
+    for key in ("stdlib", "platstdlib", "purelib", "platlib"):
+        path = sysconfig.get_paths().get(key)
+        if path:
+            found.setdefault(path, f"<{key}>")
+    try:
+        for path in site.getsitepackages():
+            found.setdefault(path, "<site-packages>")
+    except AttributeError:  # pragma: no cover - virtualenv without site API
+        pass
+    for path, token in (
+        (sys.prefix, "<prefix>"),
+        (sys.base_prefix, "<base-prefix>"),
+        (os.getcwd(), "<cwd>"),
+        (os.path.expanduser("~"), "<home>"),
+    ):
+        if path and len(path) > 1:
+            found.setdefault(path, token)
+    pairs = [(p, t) for p, t in found.items() if len(p) > 3]
+    return sorted(pairs, key=lambda pt: -len(pt[0]))
+
+
+_PREFIXES: list[tuple[str, str]] | None = None
+
+
 def sanitize_text(text: str) -> str:
-    """Remove object addresses and bound the length of trace-embedded text."""
+    """Remove object addresses and host paths, and bound the length of trace text."""
+    global _PREFIXES
     text = _ADDR_RE.sub(" at 0x?", text)
+    if _PREFIXES is None:
+        _PREFIXES = _host_prefixes()
+    for prefix, token in _PREFIXES:
+        if prefix in text:
+            text = text.replace(prefix, token)
     if len(text) > _MAX_TEXT:
         text = text[:_MAX_TEXT] + f"...[truncated {len(text) - _MAX_TEXT} chars]"
     return text

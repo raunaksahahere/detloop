@@ -101,6 +101,7 @@ def test_drain_blocks_until_receiver_reads() -> None:
                 await release.wait()
                 while data := await r.read(65536):
                     received.append(len(data))
+                w.close()
 
             srv = await asyncio.start_server(handle, port=PORT)
             await srv.serve_forever()
