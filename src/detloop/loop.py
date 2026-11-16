@@ -134,6 +134,8 @@ class SimLoop(asyncio.AbstractEventLoop):
         self._batch_limit = 0
         self._fifo: collections.deque[SimHandle] = collections.deque()
         self._queues: dict[Owner | None, collections.deque[SimHandle]] = {}
+        self._due: dict[Owner | None, collections.deque[SimTimerHandle]] = {}
+        self._limits: dict[Owner | None, int] = {}
         self._timers: list[tuple[int, int, SimTimerHandle]] = []
         self._timer_cancelled = 0
 
@@ -296,27 +298,100 @@ class SimLoop(asyncio.AbstractEventLoop):
 
     # ------------------------------------------------------------------
     # The scheduler
+    #
+    # ``fifo``: one global iteration structure, exactly like
+    # ``BaseEventLoop._run_once``: a batch is every handle ready when the
+    # iteration began; timers that became due join after them.
+    #
+    # ``interleave``/``relaxed``: every owner (control or node incarnation)
+    # behaves like its own event loop with its own iterations and batch
+    # boundary, so a node can run several iterations while another is
+    # mid-batch, as independent processes can. Within one owner the order is
+    # asyncio's. The decision is which owner runs the next handle.
     def _has_ready(self) -> bool:
         if self._mode == "fifo":
             return bool(self._fifo)
-        return any(self._queues.values())
+        return any(self._queues.values()) or any(self._due.values())
 
     def _batch_pending(self) -> bool:
-        limit = self._batch_limit
         if self._mode == "fifo":
-            return bool(self._fifo) and self._fifo[0]._seq < limit
-        return any(q and q[0]._seq < limit for q in self._queues.values())
+            return bool(self._fifo) and self._fifo[0]._seq < self._batch_limit
+        limits = self._limits
+        return any(q and q[0]._seq < limits.get(k, -1) for k, q in self._queues.items())
 
-    def _pick(self) -> SimHandle | None:
-        limit = self._batch_limit
+    def _advance_time(self) -> bool:
+        """Jump virtual time to the earliest live timer; False if there is none."""
+        timers = self._timers
+        while timers and timers[0][2]._cancelled:
+            heapq.heappop(timers)
+            self._timer_cancelled -= 1
+        if not timers:
+            return False
+        when = timers[0][0]
+        if when > self._now:
+            if when > self._max_ns and not self._teardown:
+                raise BudgetExceeded(
+                    "virtual_time",
+                    f"virtual time budget of {self._max_ns / NS:g}s exhausted "
+                    f"(next timer at {when / NS:g}s)",
+                )
+            self._now = when
+            self._steps_at_progress = self.steps
+        return True
+
+    def _pop_due(self) -> list[SimTimerHandle]:
+        timers = self._timers
+        now = self._now
+        out: list[SimTimerHandle] = []
+        while timers and timers[0][0] <= now:
+            _, _, h = heapq.heappop(timers)
+            if h._cancelled:
+                self._timer_cancelled -= 1
+                continue
+            h._scheduled = False
+            out.append(h)
+        return out
+
+    def _pick(self, stopping: bool = False) -> SimHandle | None:
         if self._mode == "fifo":
-            q = self._fifo
-            if q and q[0]._seq < limit:
+            return self._pick_fifo(stopping)
+        return self._pick_owner(stopping)
+
+    def _pick_fifo(self, stopping: bool) -> SimHandle | None:
+        q = self._fifo
+        while True:
+            if q and q[0]._seq < self._batch_limit:
                 return q.popleft()
-            return None
-        cands = [(q[0]._seq, k) for k, q in self._queues.items() if q and q[0]._seq < limit]
-        if not cands:
-            return None
+            if stopping:
+                return None
+            if not q and not self._advance_time():
+                return None
+            for h in self._pop_due():
+                h._seq = self._seq
+                self._seq += 1
+                q.append(h)
+            self._batch_limit = self._seq
+
+    def _pick_owner(self, stopping: bool) -> SimHandle | None:
+        queues, due, limits = self._queues, self._due, self._limits
+        while True:
+            for h in self._pop_due():
+                d = due.get(h._owner)
+                if d is None:
+                    d = due[h._owner] = collections.deque()
+                d.append(h)
+            cands: list[tuple[int, Owner | None]] = []
+            for k, q in queues.items():
+                if q and (not stopping or q[0]._seq < limits.get(k, -1)):
+                    cands.append((q[0]._seq, k))
+            if not stopping:
+                for k, d in due.items():
+                    if d and not queues.get(k):
+                        cands.append((d[0]._seq, k))
+            if cands:
+                break
+            if stopping or not self._advance_time():
+                return None
         if len(cands) == 1:
             key = cands[0][1]
         else:
@@ -328,7 +403,20 @@ class SimLoop(asyncio.AbstractEventLoop):
                     "choose", 2, n=len(cands), pick=owner_label(key),
                     of=[owner_label(c[1]) for c in cands],
                 )
-        q = self._queues[key]
+        q = queues.get(key)
+        limit = limits.get(key, -1)
+        if q is None or not q or q[0]._seq >= limit:
+            # This owner starts a new iteration: its due timers join after the
+            # handles already queued, and everything now queued is its batch.
+            if q is None:
+                q = queues[key] = collections.deque()
+            d = due.pop(key, None)
+            if d:
+                for h in d:
+                    h._seq = self._seq
+                    self._seq += 1
+                    q.append(h)
+            limit = limits[key] = self._seq
         if self._mode == "relaxed":
             eligible = 0
             for h in q:
@@ -336,55 +424,41 @@ class SimLoop(asyncio.AbstractEventLoop):
                     break
                 eligible += 1
             if eligible > 1:
-                idx = self._decisions.choose("sched", eligible, "handle")
-                h = q[idx]
-                del q[idx]
+                i = self._decisions.choose("sched", eligible, "handle")
+                h = q[i]
+                del q[i]
                 if not q:
-                    del self._queues[key]
+                    del queues[key]
                 return h
         h = q.popleft()
         if not q:
-            del self._queues[key]
+            del queues[key]
         return h
 
-    def _begin_iteration(self, advance: bool = True) -> bool:
-        timers = self._timers
-        if advance and not self._has_ready():
-            while timers and timers[0][2]._cancelled:
-                heapq.heappop(timers)
-                self._timer_cancelled -= 1
-            if not timers:
-                return False
-            when = timers[0][0]
-            if when > self._now:
-                if when > self._max_ns and not self._teardown:
-                    raise BudgetExceeded(
-                        "virtual_time",
-                        f"virtual time budget of {self._max_ns / NS:g}s exhausted "
-                        f"(next timer at {when / NS:g}s)",
-                    )
-                self._now = when
-                self._steps_at_progress = self.steps
-        now = self._now
-        while timers and timers[0][0] <= now:
-            _, _, h = heapq.heappop(timers)
-            if h._cancelled:
-                self._timer_cancelled -= 1
-                continue
-            h._scheduled = False
-            h._seq = self._seq
-            self._seq += 1
-            self._enqueue(h)
-        self._batch_limit = self._seq
-        return True
+    def _prime_iteration(self) -> None:
+        """``stop()`` before ``run_forever()``: run one iteration without advancing time."""
+        if self._mode == "fifo":
+            for h in self._pop_due():
+                h._seq = self._seq
+                self._seq += 1
+                self._fifo.append(h)
+            self._batch_limit = self._seq
+            return
+        for h in self._pop_due():
+            self._due.setdefault(h._owner, collections.deque()).append(h)
+        for key in list(self._due):
+            q = self._queues.setdefault(key, collections.deque())
+            for h in self._due.pop(key):
+                h._seq = self._seq
+                self._seq += 1
+                q.append(h)
+        for key in self._queues:
+            self._limits[key] = self._seq
 
     def _step(self) -> bool:
-        while True:
-            h = self._pick()
-            if h is not None:
-                break
-            if not self._begin_iteration():
-                return False
+        h = self._pick(self._stopping)
+        if h is None:
+            return False
         self._execute(h)
         return True
 
@@ -451,7 +525,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         _compat.set_running_loop(self)
         try:
             if self._stopping:
-                self._begin_iteration(advance=False)
+                self._prime_iteration()
             while True:
                 if self._stopping and not self._batch_pending():
                     break
@@ -504,6 +578,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         self._closed = True
         self._fifo.clear()
         self._queues.clear()
+        self._due.clear()
         self._timers.clear()
         self._default_executor = None
 
@@ -610,7 +685,9 @@ class SimLoop(asyncio.AbstractEventLoop):
     def drop_owner(self, owner: Owner) -> int:
         """Discard queued handles of a dead owner (timers are dropped lazily)."""
         q = self._queues.pop(owner, None)
-        n = len(q) if q else 0
+        d = self._due.pop(owner, None)
+        self._limits.pop(owner, None)
+        n = (len(q) if q else 0) + (len(d) if d else 0)
         self.dropped_handles += n
         return n
 
