@@ -65,7 +65,13 @@ class TransportSocketView:
 class SimSocket:
     """Stand-in for ``socket.socket`` inside a simulation (TCP/IPv4 only)."""
 
-    def __init__(self, family: int = AF_INET, type: int = SOCK_STREAM, proto: int = 0, fileno: int | None = None) -> None:
+    def __init__(
+        self,
+        family: int = AF_INET,
+        type: int = SOCK_STREAM,
+        proto: int = 0,
+        fileno: int | None = None,
+    ) -> None:
         from ..guards import violation
 
         if fileno is not None:
@@ -134,7 +140,9 @@ class SimSocket:
         return 0  # pragma: no cover
 
     def listen(self, backlog: int = 0) -> None:
-        raise UnsupportedOperation("listening on raw sockets; use asyncio.start_server/loop.create_server")
+        raise UnsupportedOperation(
+            "listening on raw sockets; use asyncio.start_server/loop.create_server"
+        )
 
     def accept(self) -> Any:
         raise UnsupportedOperation("socket.accept(); use asyncio.start_server/loop.create_server")

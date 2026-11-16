@@ -20,6 +20,7 @@ Determinism rules (see docs/DETERMINISM.md):
 
 from __future__ import annotations
 
+import contextlib
 import multiprocessing
 import os
 import time
@@ -121,7 +122,9 @@ class ExploreResult:
             "discarded_beyond_cutoff": len(self.discarded),
             "jobs": self.jobs,
             "wall_seconds": round(self.wall_seconds, 3),
-            "seeds_per_second": round(completed / self.wall_seconds, 2) if self.wall_seconds else None,
+            "seeds_per_second": round(completed / self.wall_seconds, 2)
+            if self.wall_seconds
+            else None,
             "db": self.db_path,
             "exploration_id": self.exploration_id,
             "exit_code": self.exit_code(),
@@ -174,7 +177,9 @@ def save_failure(
     return write_run_artifacts(directory, manifest, result.trace_lines)
 
 
-def _worker_main(conn: Connection, target: Target, config_dict: dict[str, Any], artifacts_dir: str | None) -> None:
+def _worker_main(
+    conn: Connection, target: Target, config_dict: dict[str, Any], artifacts_dir: str | None
+) -> None:
     try:
         spec = load(target)
         config = SimConfig.from_dict(config_dict)
@@ -193,7 +198,12 @@ def _worker_main(conn: Connection, target: Target, config_dict: dict[str, Any], 
         seed = int(msg)
         try:
             summary, path = run_seed(
-                spec, config, seed, target=target, artifacts_dir=artifacts_dir, workload_fp=workload_fp
+                spec,
+                config,
+                seed,
+                target=target,
+                artifacts_dir=artifacts_dir,
+                workload_fp=workload_fp,
             )
             conn.send(("result", (summary, path)))
         except KeyboardInterrupt:
@@ -204,9 +214,18 @@ def _worker_main(conn: Connection, target: Target, config_dict: dict[str, Any], 
 
 def _error_summary(seed: int, kind: str, message: str, status: str = ERROR) -> dict[str, Any]:
     return {
-        "seed": seed, "status": status, "kind": kind, "signature": kind, "message": message,
-        "steps": 0, "virtual_time": 0.0, "trace_sha256": "", "trace_events": 0, "faults": 0,
-        "decisions": 0, "wall_seconds": 0.0,
+        "seed": seed,
+        "status": status,
+        "kind": kind,
+        "signature": kind,
+        "message": message,
+        "steps": 0,
+        "virtual_time": 0.0,
+        "trace_sha256": "",
+        "trace_events": 0,
+        "faults": 0,
+        "decisions": 0,
+        "wall_seconds": 0.0,
     }
 
 
@@ -248,7 +267,10 @@ def explore(
     if any(s < 0 for s in seed_list):
         raise ValueError("seeds must be non-negative")
     result = ExploreResult(
-        target=target.location if target else spec.module, test=spec.qualname, seeds=seed_list, jobs=jobs,
+        target=target.location if target else spec.module,
+        test=spec.qualname,
+        seeds=seed_list,
+        jobs=jobs,
         db_path=db_path,
     )
     db = ResultsDB(db_path) if db_path else None
@@ -256,7 +278,12 @@ def explore(
     if db is not None and seed_list:
         span = range(seed_list[0], seed_list[-1] + 1)
         result.exploration_id = db.start(
-            target=result.target, test=spec.qualname, fingerprint=workload_fp, config=cfg, seeds=span, jobs=jobs
+            target=result.target,
+            test=spec.qualname,
+            fingerprint=workload_fp,
+            config=cfg,
+            seeds=span,
+            jobs=jobs,
         )
     cutoff = _Cutoff(max_failures)
     started = _perf()
@@ -285,13 +312,28 @@ def explore(
                 if limit is not None and seed > limit:
                     break
                 summary, path = run_seed(
-                    spec, cfg, seed, target=target, artifacts_dir=artifacts_dir, workload_fp=workload_fp
+                    spec,
+                    cfg,
+                    seed,
+                    target=target,
+                    artifacts_dir=artifacts_dir,
+                    workload_fp=workload_fp,
                 )
                 record(summary, path)
         else:
             if target is None:
                 raise ValueError("parallel exploration requires an importable target")
-            _parallel(target, cfg, seed_list, jobs, artifacts_dir, hash_seed, fresh_process, cutoff, record)
+            _parallel(
+                target,
+                cfg,
+                seed_list,
+                jobs,
+                artifacts_dir,
+                hash_seed,
+                fresh_process,
+                cutoff,
+                record,
+            )
     except KeyboardInterrupt:
         result.interrupted = True
     finally:
@@ -305,18 +347,29 @@ def explore(
         result.wall_seconds = _perf() - started
         if db is not None:
             if result.exploration_id is not None:
-                db.finish(result.exploration_id, "interrupted" if result.interrupted else "finished")
+                db.finish(
+                    result.exploration_id, "interrupted" if result.interrupted else "finished"
+                )
             db.close()
     return result
 
 
 class _Worker:
-    def __init__(self, ctx: Any, target: Target, cfg: dict[str, Any], artifacts_dir: str | None, hash_seed: str) -> None:
+    def __init__(
+        self,
+        ctx: Any,
+        target: Target,
+        cfg: dict[str, Any],
+        artifacts_dir: str | None,
+        hash_seed: str,
+    ) -> None:
         parent, child = ctx.Pipe()
         old = os.environ.get("PYTHONHASHSEED")
         os.environ["PYTHONHASHSEED"] = hash_seed
         try:
-            self.proc = ctx.Process(target=_worker_main, args=(child, target, cfg, artifacts_dir), daemon=True)
+            self.proc = ctx.Process(
+                target=_worker_main, args=(child, target, cfg, artifacts_dir), daemon=True
+            )
             self.proc.start()
         finally:
             if old is None:
@@ -336,18 +389,14 @@ class _Worker:
         self.conn.send(seed)
 
     def kill(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.proc.kill()
-        except Exception:  # noqa: S110
-            pass
         self.proc.join(5)
         self.conn.close()
 
     def stop(self) -> None:
-        try:
+        with contextlib.suppress(OSError, EOFError):
             self.conn.send(None)
-        except (OSError, EOFError):
-            pass
         self.proc.join(5)
         if self.proc.is_alive():
             self.kill()
@@ -402,7 +451,14 @@ def _parallel(
                         w.kill()
                         workers.remove(w)
                         if seed is not None:
-                            record(_error_summary(seed, "worker_crashed", "worker process died while running this seed"), None)
+                            record(
+                                _error_summary(
+                                    seed,
+                                    "worker_crashed",
+                                    "worker process died while running this seed",
+                                ),
+                                None,
+                            )
                         elif not w.ready:
                             raise RuntimeError("worker process failed to start") from None
                         workers.append(spawn())
@@ -431,7 +487,9 @@ def _parallel(
                     workers.remove(w)
                     record(
                         _error_summary(
-                            seed, "wall_timeout", f"worker exceeded hard wall-clock deadline of {hard:g}s and was killed",
+                            seed,
+                            "wall_timeout",
+                            f"worker exceeded hard wall-clock deadline of {hard:g}s and was killed",
                             status=INCOMPLETE,
                         ),
                         None,

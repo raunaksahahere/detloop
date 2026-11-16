@@ -153,7 +153,9 @@ class Endpoint:
 class SimTransport(asyncio.Transport):
     """Transport for a simulated stream endpoint."""
 
-    def __init__(self, ep: Endpoint, protocol: asyncio.BaseProtocol, server: SimServer | None = None) -> None:
+    def __init__(
+        self, ep: Endpoint, protocol: asyncio.BaseProtocol, server: SimServer | None = None
+    ) -> None:
         super().__init__(extra=None)
         self._ep = ep
         self._protocol: Any = protocol
@@ -250,9 +252,11 @@ class SimTransport(asyncio.Transport):
         out = self._ep.out
         return out.buffered() if out is not None else 0
 
-    def write(self, data: bytes | bytearray | memoryview) -> None:  # type: ignore[override]
+    def write(self, data: bytes | bytearray | memoryview) -> None:
         if not isinstance(data, bytes | bytearray | memoryview):
-            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__!r}")
+            raise TypeError(
+                f"data argument must be a bytes-like object, not {type(data).__name__!r}"
+            )
         if self._eof_written:
             raise RuntimeError("Cannot call write() after write_eof()")
         if not data:
@@ -304,11 +308,20 @@ class SimTransport(asyncio.Transport):
                 raise
             except BaseException as exc:
                 self._loop.call_exception_handler(
-                    {"message": "protocol.pause_writing() failed", "exception": exc, "transport": self, "protocol": self._protocol}
+                    {
+                        "message": "protocol.pause_writing() failed",
+                        "exception": exc,
+                        "transport": self,
+                        "protocol": self._protocol,
+                    }
                 )
 
     def _maybe_resume(self) -> None:
-        if self._writing_paused and self.get_write_buffer_size() <= self._low and not self._lost_called:
+        if (
+            self._writing_paused
+            and self.get_write_buffer_size() <= self._low
+            and not self._lost_called
+        ):
             self._writing_paused = False
             self._loop.call_soon(self._call_protocol, "resume_writing", context=self._ep.ctx)
 
@@ -351,4 +364,6 @@ class SimTransport(asyncio.Transport):
 
 
 def reset_error(ep: Endpoint) -> ConnectionResetError:
-    return ConnectionResetError(errno.ECONNRESET, f"Connection reset by peer (simulated, {ep.name})")
+    return ConnectionResetError(
+        errno.ECONNRESET, f"Connection reset by peer (simulated, {ep.name})"
+    )

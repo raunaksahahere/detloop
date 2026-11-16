@@ -169,7 +169,7 @@ def test_half_close_eof_and_close_vs_abort() -> None:
         w.close()
         await w.wait_closed()
         # abort: the peer sees a reset
-        r2, w2 = await asyncio.open_connection("n1", PORT)
+        _r2, w2 = await asyncio.open_connection("n1", PORT)
         w2.transport.abort()
         await asyncio.sleep(0.1)
         assert w2.is_closing()
@@ -194,7 +194,7 @@ def test_connection_refused_and_timeouts() -> None:
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(asyncio.open_connection("n1", PORT), 2)
         world.heal()
-        r, w = await asyncio.open_connection("n1", PORT)
+        _r, w = await asyncio.open_connection("n1", PORT)
         w.close()
 
     expect_pass(body)
@@ -325,7 +325,7 @@ def test_host_crash_then_restart_resets_old_connections() -> None:
 def test_reset_fault_and_reset_connections() -> None:
     async def body(world: detloop.World) -> None:
         await start_echo(world)
-        r, w = await asyncio.open_connection("n1", PORT)
+        r, _w = await asyncio.open_connection("n1", PORT)
         assert world.reset_connections("control", "n1") == 1
         with pytest.raises(ConnectionResetError):
             await asyncio.wait_for(r.readexactly(1), 1)
@@ -419,8 +419,12 @@ def test_message_bus_reliable_without_faults_and_lossy_with_faults() -> None:
         for i in range(200):
             ep.send("n1", 9000, str(i).encode())
         await asyncio.sleep(1)
-        world.note("stats", received=len(got), distinct=len(set(got)),
-                   ordered=[int(p) for _, p in got] == sorted(int(p) for _, p in got))
+        world.note(
+            "stats",
+            received=len(got),
+            distinct=len(set(got)),
+            ordered=[int(p) for _, p in got] == sorted(int(p) for _, p in got),
+        )
         with pytest.raises(TypeError):
             ep.send("n1", 9000, "not bytes")  # type: ignore[arg-type]
 

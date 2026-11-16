@@ -38,7 +38,8 @@ class ReplayReport:
 
     def describe(self) -> str:
         lines = [
-            f"replayed seed {self.result.seed} ({self.mode} decisions): {self.result.status} {self.result.signature}",
+            f"replayed seed {self.result.seed} ({self.mode} decisions): "
+            f"{self.result.status} {self.result.signature}",
             f"  expected signature: {self.expected_signature}",
             "  REPRODUCED: same failure signature" if self.reproduced else "  NOT REPRODUCED",
             f"  trace: {'identical' if self.identical_trace else 'differs'} "
@@ -48,7 +49,9 @@ class ReplayReport:
         return "\n".join(lines)
 
 
-def resolve_manifest_target(manifest: dict[str, Any], base_dir: str | None = None) -> tuple[Target, Spec]:
+def resolve_manifest_target(
+    manifest: dict[str, Any], base_dir: str | None = None
+) -> tuple[Target, Spec]:
     loc = manifest["target"]["location"]
     test = manifest["target"]["test"]
     candidates = [loc]
@@ -64,7 +67,9 @@ def resolve_manifest_target(manifest: dict[str, Any], base_dir: str | None = Non
     raise ReplayMismatch(f"cannot load target {loc}::{test}: {last}")
 
 
-def check_envelope(manifest: dict[str, Any], spec: Spec, *, allow_mismatch: bool = False) -> list[str]:
+def check_envelope(
+    manifest: dict[str, Any], spec: Spec, *, allow_mismatch: bool = False
+) -> list[str]:
     warnings: list[str] = []
     meta = manifest.get("metadata", {})
     recorded = manifest["target"].get("workload_fingerprint") or ""
@@ -82,14 +87,16 @@ def check_envelope(manifest: dict[str, Any], spec: Spec, *, allow_mismatch: bool
     py = ".".join(map(str, sys.version_info[:3]))
     if meta.get("python") and meta["python"].rsplit(".", 1)[0] != py.rsplit(".", 1)[0]:
         warnings.append(
-            f"recorded on Python {meta['python']}, replaying on {py}: asyncio internals differ between "
+            f"recorded on Python {meta['python']}, replaying on {py}: asyncio internals "
+            "differ between "
             "minor versions, so byte-identical traces are not guaranteed"
         )
     hs = meta.get("hash_seed")
     if hs is not None and os.environ.get("PYTHONHASHSEED") != hs:
         warnings.append(
             f"recorded with PYTHONHASHSEED={hs}; current process uses "
-            f"{os.environ.get('PYTHONHASHSEED', 'random')}. Code that iterates sets of strings may diverge"
+            f"{os.environ.get('PYTHONHASHSEED', 'random')}. Code that iterates sets of "
+            "strings may diverge"
         )
     return warnings
 
@@ -127,8 +134,16 @@ def replay_with(
         tapes = {s: Tape.from_json(t) for s, t in decisions["tapes"].items()}
         mode = "strict"
     result = run(
-        spec.fn, seed=int(manifest["seed"]), config=cfg, faults=faults, tapes=tapes, decision_mode=mode,
-        keep_trace=keep_trace, trace_level=trace_level, args=args, kwargs=kwargs,
+        spec.fn,
+        seed=int(manifest["seed"]),
+        config=cfg,
+        faults=faults,
+        tapes=tapes,
+        decision_mode=mode,
+        keep_trace=keep_trace,
+        trace_level=trace_level,
+        args=args,
+        kwargs=kwargs,
     )
     expected = manifest["outcome"]["signature"]
     level_changed = trace_level is not None and trace_level != cfg.trace

@@ -20,7 +20,9 @@ def run_sim(fn: Any, seed: int = 0, **overrides: Any) -> detloop.RunResult:
 def expect_pass(fn: Any, seed: int = 0, **overrides: Any) -> detloop.RunResult:
     res = run_sim(fn, seed, **overrides)
     if res.status != "pass":
-        pytest.fail(f"simulation did not pass: {res.status} {res.signature}: {res.message}\n{res.traceback}")
+        pytest.fail(
+            f"simulation did not pass: {res.status} {res.signature}: {res.message}\n{res.traceback}"
+        )
     return res
 
 

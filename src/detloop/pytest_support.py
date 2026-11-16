@@ -51,11 +51,14 @@ def _replay_command(spec: Spec, seed: int) -> str:
     return f"pytest {shlex.quote(str(t))} --detloop-seed={seed}" if t else f"--detloop-seed={seed}"
 
 
-def _format_failure(spec: Spec, res: RunResult, index: int, total: int, manifest: str | None, extra: str = "") -> str:
+def _format_failure(
+    spec: Spec, res: RunResult, index: int, total: int, manifest: str | None, extra: str = ""
+) -> str:
     lines = [
         f"detloop: seed {res.seed} {res.status} ({res.signature}) after {index} of {total} seed(s)",
         f"  {res.message}",
-        f"  virtual time {res.virtual_ns / 1e9:g}s, {res.steps} steps, {len(res.faults)} scheduled fault(s)",
+        f"  virtual time {res.virtual_ns / 1e9:g}s, {res.steps} steps, "
+        f"{len(res.faults)} scheduled fault(s)",
     ]
     for d in res.details[:10]:
         lines.append(f"    {d}")
@@ -97,7 +100,9 @@ def run_spec_for_pytest(spec: Spec, args: tuple[Any, ...], kwargs: dict[str, Any
             if options.shrink:
                 extra = _shrink_in_pytest(spec, res, cfg, target)
         elif args or kwargs:
-            extra = "  (artifacts are not written for parametrized tests; replay with --detloop-seed)"
+            extra = (
+                "  (artifacts are not written for parametrized tests; replay with --detloop-seed)"
+            )
         raise SimulationFailure(_format_failure(spec, res, i, len(seeds), manifest, extra))
 
 
@@ -110,15 +115,24 @@ def _shrink_in_pytest(spec: Spec, res: RunResult, cfg: Any, target: Target | Non
         return f"  shrink failed: {type(exc).__name__}: {exc}"
     m = sr.metrics()
     path = save_failure(
-        sr.final, spec, sr.config or cfg, target, options.artifacts or ".detloop/artifacts", fingerprint(spec),
-        suffix="-shrunk", faults_explicit=True, include_decisions=True, shrink=m,
+        sr.final,
+        spec,
+        sr.config or cfg,
+        target,
+        options.artifacts or ".detloop/artifacts",
+        fingerprint(spec),
+        suffix="-shrunk",
+        faults_explicit=True,
+        include_decisions=True,
+        shrink=m,
     )
     return (
         f"  shrunk ({m['status']}, {m['runs']} runs): faults {m['faults'][0]}->{m['faults'][1]}, "
         f"non-zero decisions {m['nonzero_decisions'][0]}->{m['nonzero_decisions'][1]}, "
         f"steps {m['steps'][0]}->{m['steps'][1]}\n"
         f"  shrunk manifest: {path}\n"
-        f"  replay shrunk:   pytest {shlex.quote(options.nodeid or '')} --detloop-replay={shlex.quote(path)}"
+        f"  replay shrunk:   pytest {shlex.quote(options.nodeid or '')} "
+        f"--detloop-replay={shlex.quote(path)}"
     )
 
 
@@ -135,7 +149,5 @@ def _replay_in_pytest(spec: Spec, args: tuple[Any, ...], kwargs: dict[str, Any])
     report = replay_with(manifest, spec, args=args, kwargs=kwargs)
     report.warnings[:0] = warnings
     if report.result.status != PASS:
-        raise SimulationFailure(
-            _format_failure(spec, report.result, 1, 1, None, report.describe())
-        )
+        raise SimulationFailure(_format_failure(spec, report.result, 1, 1, None, report.describe()))
     raise SimulationFailure("detloop: replay did not reproduce the failure\n" + report.describe())

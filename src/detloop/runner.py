@@ -113,7 +113,7 @@ def _user_frame(tb: Any) -> str:
     best = ""
     for frame in traceback.extract_tb(tb):
         fn = os.path.abspath(frame.filename)
-        if fn.startswith(here + os.sep) or fn.startswith(asyncio_dir + os.sep):
+        if fn.startswith((here + os.sep, asyncio_dir + os.sep)):
             continue
         best = f"{os.path.basename(frame.filename)}:{frame.lineno}"
     return best
@@ -144,7 +144,11 @@ def classify(exc: BaseException) -> tuple[str, str, str]:
         inner = type(exc.exc).__qualname__
         return FAIL, "node_error", f"node_error:{inner}:{_user_frame(exc.exc.__traceback__)}"
     if isinstance(exc, InternalError | ReplayDivergence):
-        return ERROR, "internal_error" if isinstance(exc, InternalError) else "replay_divergence", name
+        return (
+            ERROR,
+            "internal_error" if isinstance(exc, InternalError) else "replay_divergence",
+            name,
+        )
     if isinstance(exc, AssertionError):
         return FAIL, "assertion", f"assertion:{_user_frame(exc.__traceback__)}"
     return FAIL, "exception", f"exception:{name}:{_user_frame(exc.__traceback__)}"
@@ -236,7 +240,11 @@ def run(
     trace = Trace(cfg.trace, cfg.budgets.max_trace_events)
     world = World(cfg, seed, decisions, trace)
     loop = world.loop
-    schedule = faults if faults is not None else generate(cfg.faults, cfg.nodes, decisions.generator("faults"))
+    schedule = (
+        faults
+        if faults is not None
+        else generate(cfg.faults, cfg.nodes, decisions.generator("faults"))
+    )
     trace.header(
         seed=seed,
         config=cfg.fingerprint(),
@@ -269,7 +277,9 @@ def run(
                     outcome["message"] = "passed"
                 except KeyboardInterrupt:
                     if dog.fired:
-                        exc2: BaseException = WallClockTimeout(f"supervisory wall-clock timeout of {dog.timeout}s")
+                        exc2: BaseException = WallClockTimeout(
+                            f"supervisory wall-clock timeout of {dog.timeout}s"
+                        )
                         outcome["status"] = classify(exc2)
                         outcome["message"] = str(exc2)
                     else:
@@ -283,7 +293,10 @@ def run(
                     if isinstance(exc, DeadlockError):
                         outcome["details"] = exc.pending
                 trace.emit(
-                    "end", 1, status=outcome["status"][0], signature=outcome["status"][2],
+                    "end",
+                    1,
+                    status=outcome["status"][0],
+                    signature=outcome["status"][2],
                     message=outcome["message"],
                 )
                 trace.seal()
@@ -296,7 +309,9 @@ def run(
                 except BaseException as exc:  # teardown never changes the outcome
                     if isinstance(exc, SystemExit):
                         raise
-                    loop.warnings.append(f"teardown: {type(exc).__qualname__}: {sanitize_text(str(exc))}")
+                    loop.warnings.append(
+                        f"teardown: {type(exc).__qualname__}: {sanitize_text(str(exc))}"
+                    )
                     if not loop.is_closed():
                         loop._running = False
                         loop.close()
@@ -367,12 +382,16 @@ def _teardown(world: World, outcome: dict[str, Any]) -> None:
         except BaseException as exc:
             if isinstance(exc, SystemExit):
                 raise
-            loop.warnings.append(f"teardown incomplete: {type(exc).__qualname__}: {sanitize_text(str(exc))}")
+            loop.warnings.append(
+                f"teardown incomplete: {type(exc).__qualname__}: {sanitize_text(str(exc))}"
+            )
     for _, t, _ in loop.pending_tasks():
         _close_coro(t)
     open_transports = world.network.close_all()
     if open_transports:
-        loop.warnings.append(f"{open_transports} simulated transport(s) were still open at the end of the run")
+        loop.warnings.append(
+            f"{open_transports} simulated transport(s) were still open at the end of the run"
+        )
 
 
 def _silence_leftovers(world: World) -> None:

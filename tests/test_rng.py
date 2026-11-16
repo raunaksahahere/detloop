@@ -97,8 +97,16 @@ def test_simrandom_api_is_deterministic() -> None:
         r = SimRandom(Decisions(seed))
         items = list(range(10))
         r.shuffle(items)
-        return [r.randint(1, 6), r.choice("abc"), round(r.random(), 12), r.uniform(1, 2) < 2,
-                r.getrandbits(40) < 2**40, items, r.sample(range(100), 3), r.randrange(0, 10, 3)]
+        return [
+            r.randint(1, 6),
+            r.choice("abc"),
+            round(r.random(), 12),
+            r.uniform(1, 2) < 2,
+            r.getrandbits(40) < 2**40,
+            items,
+            r.sample(range(100), 3),
+            r.randrange(0, 10, 3),
+        ]
 
     assert draw(1) == draw(1)
     assert draw(1) != draw(2)

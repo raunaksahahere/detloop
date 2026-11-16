@@ -17,8 +17,13 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, "-m", "detloop", *args], cwd=cwd or ROOT, capture_output=True,
-                          text=True, check=False)
+    return subprocess.run(
+        [sys.executable, "-m", "detloop", *args],
+        cwd=cwd or ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def test_version_and_help() -> None:
@@ -32,7 +37,12 @@ def test_version_and_help() -> None:
 def test_usage_errors_exit_2(tmp_path: Path) -> None:
     assert cli("explore", "does/not/exist.py").returncode == 2
     assert cli("explore", "tests/sim_targets.py::nope").returncode == 2
-    assert cli("explore", "tests/sim_targets.py::test_always_passes", "--set", "bogus_key=1").returncode == 2
+    assert (
+        cli(
+            "explore", "tests/sim_targets.py::test_always_passes", "--set", "bogus_key=1"
+        ).returncode
+        == 2
+    )
     assert cli("report", str(tmp_path / "missing.json")).returncode == 2
     p = cli("shrink", "tests/sim_targets.py::test_racy_counter")
     assert p.returncode == 2 and "--seed" in p.stderr
@@ -42,8 +52,22 @@ def test_explore_replay_shrink_report_round_trip(tmp_path: Path) -> None:
     art = tmp_path / "art"
     db = tmp_path / "r.sqlite"
     summary_file = tmp_path / "s.json"
-    p = cli("explore", "tests/sim_targets.py::test_racy_counter", "--seeds", "12", "--jobs", "2", "--artifacts",
-            str(art), "--db", str(db), "--json", "--summary-file", str(summary_file), "-q")
+    p = cli(
+        "explore",
+        "tests/sim_targets.py::test_racy_counter",
+        "--seeds",
+        "12",
+        "--jobs",
+        "2",
+        "--artifacts",
+        str(art),
+        "--db",
+        str(db),
+        "--json",
+        "--summary-file",
+        str(summary_file),
+        "-q",
+    )
     assert p.returncode == 1, p.stderr
     summary = json.loads(p.stdout)
     assert summary == json.loads(summary_file.read_text())
@@ -73,16 +97,38 @@ def test_explore_replay_shrink_report_round_trip(tmp_path: Path) -> None:
 
 
 def test_explore_passing_and_incomplete_exit_codes(tmp_path: Path) -> None:
-    p = cli("explore", "tests/sim_targets.py::test_always_passes", "--no-db", "--artifacts", str(tmp_path), "-q")
+    p = cli(
+        "explore",
+        "tests/sim_targets.py::test_always_passes",
+        "--no-db",
+        "--artifacts",
+        str(tmp_path),
+        "-q",
+    )
     assert p.returncode == 0
-    p = cli("explore", "tests/sim_targets.py::test_always_passes", "--no-db", "--set", "max_virtual_time=0.5",
-            "--artifacts", str(tmp_path), "-q", "--json")
+    p = cli(
+        "explore",
+        "tests/sim_targets.py::test_always_passes",
+        "--no-db",
+        "--set",
+        "max_virtual_time=0.5",
+        "--artifacts",
+        str(tmp_path),
+        "-q",
+        "--json",
+    )
     assert p.returncode == 3
     assert json.loads(p.stdout)["incomplete"] == 5
 
 
 def test_explore_skips_tests_with_extra_parameters(tmp_path: Path) -> None:
-    p = cli("explore", "tests/sim_targets.py::test_with_fixture", "--no-db", "--artifacts", str(tmp_path))
+    p = cli(
+        "explore",
+        "tests/sim_targets.py::test_with_fixture",
+        "--no-db",
+        "--artifacts",
+        str(tmp_path),
+    )
     assert "skipping" in p.stderr
 
 
@@ -113,7 +159,18 @@ def test_replay_rejects_foreign_manifests(tmp_path: Path, bad: str) -> None:
 
 
 def test_verify_determinism_flag(tmp_path: Path) -> None:
-    p = cli("explore", "tests/sim_targets.py::test_portable_fixture", "--seeds", "4", "--no-db", "--artifacts",
-            str(tmp_path), "--verify-determinism", "4", "--json", "-q")
+    p = cli(
+        "explore",
+        "tests/sim_targets.py::test_portable_fixture",
+        "--seeds",
+        "4",
+        "--no-db",
+        "--artifacts",
+        str(tmp_path),
+        "--verify-determinism",
+        "4",
+        "--json",
+        "-q",
+    )
     out = json.loads(p.stdout)
     assert out["determinism"]["consistent"] is True and out["determinism"]["seeds"] == 4

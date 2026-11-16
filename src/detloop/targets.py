@@ -64,7 +64,9 @@ def import_location(loc: str) -> ModuleType:
             mod_file = getattr(existing, "__file__", None)
             if mod_file and os.path.abspath(mod_file) == path:
                 return existing
-            raise TargetError(f"module name {modname!r} for {loc} clashes with an already imported module")
+            raise TargetError(
+                f"module name {modname!r} for {loc} clashes with an already imported module"
+            )
         try:
             return importlib.import_module(modname)
         except TargetError:
@@ -84,7 +86,7 @@ def discover(target: str) -> list[tuple[Target, Spec]]:
     found: list[tuple[Target, Spec]] = []
     for attr, obj in vars(module).items():
         spec = get_spec(obj)
-        if spec is None or (name is not None and attr != name and spec.qualname != name):
+        if spec is None or (name is not None and name not in (attr, spec.qualname)):
             continue
         found.append((Target(loc, spec.qualname), spec))
     if not found:

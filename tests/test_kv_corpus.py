@@ -34,7 +34,9 @@ def test_planted_bug_found_replayed_and_shrunk(name: str, tmp_path: object) -> N
     spec = detloop.get_spec(getattr(kv_sim, name))
     assert spec is not None
     target = Target("detloop.examples.kv_sim", name)
-    result = explore(spec, range(budget), target=target, jobs=4, max_failures=1, artifacts_dir=str(tmp_path))
+    result = explore(
+        spec, range(budget), target=target, jobs=4, max_failures=1, artifacts_dir=str(tmp_path)
+    )
     seed = result.first_failure
     assert seed is not None, f"{name}: not found within {budget} seeds"
     assert result.results[seed]["signature"] == signature
@@ -46,7 +48,14 @@ def test_planted_bug_found_replayed_and_shrunk(name: str, tmp_path: object) -> N
     assert sr.final.signature == signature
     assert m["faults"][1] <= m["faults"][0]
     assert m["nonzero_decisions"][1] <= m["nonzero_decisions"][0]
-    again = detloop.run(spec.fn, seed=seed, config=sr.config, faults=sr.faults, tapes=sr.tapes, decision_mode="strict")
+    again = detloop.run(
+        spec.fn,
+        seed=seed,
+        config=sr.config,
+        faults=sr.faults,
+        tapes=sr.tapes,
+        decision_mode="strict",
+    )
     assert again.signature == signature and again.trace_sha256 == sr.final.trace_sha256
 
 
@@ -61,16 +70,28 @@ def test_regression_seed_still_fails(name: str) -> None:
 def test_corrected_baseline_passes_regression_budget() -> None:
     spec = detloop.get_spec(kv_sim.test_kv_correct)
     assert spec is not None
-    result = explore(spec, range(BASELINE_BUDGET), target=Target("detloop.examples.kv_sim", "test_kv_correct"),
-                     jobs=4, artifacts_dir=None)
+    result = explore(
+        spec,
+        range(BASELINE_BUDGET),
+        target=Target("detloop.examples.kv_sim", "test_kv_correct"),
+        jobs=4,
+        artifacts_dir=None,
+    )
     assert result.summary()["passed"] == BASELINE_BUDGET, result.summary()["signatures"]
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(not os.environ.get("DETLOOP_SLOW"), reason="set DETLOOP_SLOW=1 for the long baseline run")
+@pytest.mark.skipif(
+    not os.environ.get("DETLOOP_SLOW"), reason="set DETLOOP_SLOW=1 for the long baseline run"
+)
 def test_corrected_baseline_long_run() -> None:
     spec = detloop.get_spec(kv_sim.test_kv_correct)
     assert spec is not None
-    result = explore(spec, range(1000), target=Target("detloop.examples.kv_sim", "test_kv_correct"),
-                     jobs=os.cpu_count() or 2, artifacts_dir=None)
+    result = explore(
+        spec,
+        range(1000),
+        target=Target("detloop.examples.kv_sim", "test_kv_correct"),
+        jobs=os.cpu_count() or 2,
+        artifacts_dir=None,
+    )
     assert result.summary()["passed"] == 1000, result.summary()["signatures"]

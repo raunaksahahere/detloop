@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 from typing import Any
@@ -175,10 +176,8 @@ def test_invariants_are_sticky_and_periodic() -> None:
     assert (res.status, res.signature) == ("fail", "invariant:x-small")
 
     async def swallow(world: detloop.World) -> None:
-        try:
+        with contextlib.suppress(Exception):
             world.check(False, "swallowed", "caught by user code")
-        except Exception:
-            pass
         await asyncio.sleep(1)
 
     assert run_sim(swallow).signature == "invariant:swallowed"
@@ -201,10 +200,18 @@ def test_fault_generation_is_deterministic_and_bounded() -> None:
 
 def test_scheduled_faults_are_applied_and_recovered() -> None:
     schedule = [
-        Fault("f0", "partition", int(1e9), int(1e9), {"groups": [["n1"], ["n2", "n3"]], "oneway": False}),
+        Fault(
+            "f0",
+            "partition",
+            int(1e9),
+            int(1e9),
+            {"groups": [["n1"], ["n2", "n3"]], "oneway": False},
+        ),
         Fault("f1", "crash", int(1.5e9), int(0.5e9), {"node": "n2"}),
         Fault("f2", "latency", int(1e9), int(1e9), {"a": "n1", "b": "n3", "factor": 10.0}),
-        Fault("f3", "clock", int(1e9), int(1e9), {"node": "n3", "offset_ns": int(5e9), "drift_ppm": 0}),
+        Fault(
+            "f3", "clock", int(1e9), int(1e9), {"node": "n3", "offset_ns": int(5e9), "drift_ppm": 0}
+        ),
         Fault("f4", "crash", int(1.6e9), 0, {"node": "n2"}),  # already down -> skipped
     ]
     observed: dict[str, Any] = {}
@@ -225,8 +232,14 @@ def test_scheduled_faults_are_applied_and_recovered() -> None:
     cfg = detloop.SimConfig()
     res = detloop.run(body, seed=0, config=cfg, faults=schedule, keep_trace=True)
     assert res.status == "pass", res.message
-    assert observed == {"blocked": True, "skew": pytest.approx(5.0, abs=1e-6), "n2_down": True, "healed": True,
-                        "n2_back": True, "skew_after": pytest.approx(0.0, abs=1e-6)}
+    assert observed == {
+        "blocked": True,
+        "skew": pytest.approx(5.0, abs=1e-6),
+        "n2_down": True,
+        "healed": True,
+        "n2_back": True,
+        "skew_after": pytest.approx(0.0, abs=1e-6),
+    }
     assert sum('"k":"fault_skipped"' in line for line in res.trace_lines) == 1
 
 

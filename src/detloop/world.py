@@ -89,7 +89,9 @@ class Node:
 
     @property
     def up(self) -> bool:
-        return self.state in ("up", "exited") and (self.incarnation is not None or not self.crashable)
+        return self.state in ("up", "exited") and (
+            self.incarnation is not None or not self.crashable
+        )
 
     @property
     def volatile(self) -> dict[str, Any]:
@@ -119,7 +121,9 @@ class Node:
         self.incarnation = inc
         self.state = "up"
         w.trace.emit("node_start", 1, node=inc.label)
-        task = w.loop.create_task(self._main(inc), name=f"{inc.label}:main", context=inc.context.copy())
+        task = w.loop.create_task(
+            self._main(inc), name=f"{inc.label}:main", context=inc.context.copy()
+        )
         inc.main_task = task
         return task
 
@@ -162,7 +166,9 @@ class Node:
             self.crash()
         return self._boot()
 
-    def spawn(self, coro: Coroutine[Any, Any, Any], *, name: str | None = None) -> asyncio.Task[Any]:
+    def spawn(
+        self, coro: Coroutine[Any, Any, Any], *, name: str | None = None
+    ) -> asyncio.Task[Any]:
         """Run ``coro`` as a task owned by the node's current incarnation."""
         inc = self.incarnation
         if inc is None:
@@ -189,12 +195,20 @@ class Node:
         if offset is not None:
             self.clock_offset_ns = round(offset * NS)
         self.world.trace.emit(
-            "clock", 1, node=self.name, offset_ns=self.clock_offset_ns, drift_ppm=self.clock_drift_ppm
+            "clock",
+            1,
+            node=self.name,
+            offset_ns=self.clock_offset_ns,
+            drift_ppm=self.clock_drift_ppm,
         )
 
     def local_time_ns(self) -> int:
         now = self.world.loop.now_ns
-        drift = round(self.clock_drift_ppm * (now - self._drift_base_ns) / 1e6) if self.clock_drift_ppm else 0
+        drift = (
+            round(self.clock_drift_ppm * (now - self._drift_base_ns) / 1e6)
+            if self.clock_drift_ppm
+            else 0
+        )
         return now + self.clock_offset_ns + drift
 
     def wall_time(self) -> float:
@@ -272,7 +286,9 @@ class World:
         return self._control_registry if inc is None else inc.registry
 
     # -- lifecycle helpers ---------------------------------------------------
-    def start(self, factory: Factory, *args: Any, nodes: Iterable[Node | str] | None = None) -> None:
+    def start(
+        self, factory: Factory, *args: Any, nodes: Iterable[Node | str] | None = None
+    ) -> None:
         """Start ``factory`` on every node (or on ``nodes``)."""
         for n in self._nodes(nodes):
             n.start(factory, *args)
@@ -282,7 +298,9 @@ class World:
         n.crash()
         if restart_after is not None:
             gen = n.generation
-            self.loop.call_later(restart_after, self._restart_if_down, n, gen, context=self.control_context.copy())
+            self.loop.call_later(
+                restart_after, self._restart_if_down, n, gen, context=self.control_context.copy()
+            )
 
     def _restart_if_down(self, n: Node, generation: int) -> None:
         if n.state == "down" and n.generation == generation:
@@ -291,7 +309,9 @@ class World:
     def restart(self, node: Node | str) -> None:
         self.node(node).restart()
 
-    def spawn(self, coro: Coroutine[Any, Any, Any], *, name: str | None = None) -> asyncio.Task[Any]:
+    def spawn(
+        self, coro: Coroutine[Any, Any, Any], *, name: str | None = None
+    ) -> asyncio.Task[Any]:
         """Run ``coro`` as a control-owned task (never crashed)."""
         return self.loop.create_task(coro, name=name, context=self.control_context.copy())
 
@@ -320,7 +340,11 @@ class World:
                 if not oneway:
                     self.network.block(y, x)
         self.trace.emit(
-            "partition", 1, a=[n.name for n in side_a], b=[n.name for n in side_b], oneway=oneway or None
+            "partition",
+            1,
+            a=[n.name for n in side_a],
+            b=[n.name for n in side_b],
+            oneway=oneway or None,
         )
 
     def heal(
@@ -348,10 +372,14 @@ class World:
                 self.network.unblock(x, y)
                 if not oneway:
                     self.network.unblock(y, x)
-        self.trace.emit("heal", 1, a=[n.name for n in side_a], b=[n.name for n in side_b], oneway=oneway or None)
+        self.trace.emit(
+            "heal", 1, a=[n.name for n in side_a], b=[n.name for n in side_b], oneway=oneway or None
+        )
 
     def reset_connections(self, a: Node | str, b: Node | str) -> int:
-        """Reset all live connections between two nodes (both sides see ``ConnectionResetError``)."""
+        """Reset all live connections between two nodes.
+
+        Both sides see ``ConnectionResetError``."""
         n = self.network.reset_between(self.node(a), self.node(b))
         self.trace.emit("reset", 1, a=self.node(a).name, b=self.node(b).name, connections=n)
         return n
@@ -377,7 +405,9 @@ class World:
             self.loop._call_at_ns(f.at, self._apply_fault, (f,), self.control_context.copy())
 
     def _end_at(self, f: Fault, fn: Callable[..., None], *args: Any) -> None:
-        self.loop._call_at_ns(f.at + f.duration, self._framework_call, (fn, *args), self.control_context.copy())
+        self.loop._call_at_ns(
+            f.at + f.duration, self._framework_call, (fn, *args), self.control_context.copy()
+        )
 
     def _framework_call(self, fn: Callable[..., None], *args: Any) -> None:
         """Run a detloop-owned callback; a failure is an internal error, never a loop warning."""
@@ -386,7 +416,10 @@ class World:
         except Exception as exc:
             from .errors import InternalError
 
-            err = InternalError(f"detloop internal error in {getattr(fn, '__qualname__', fn)}: {type(exc).__name__}: {exc}")
+            err = InternalError(
+                f"detloop internal error in {getattr(fn, '__qualname__', fn)}: "
+                f"{type(exc).__name__}: {exc}"
+            )
             err.__cause__ = exc
             self.loop.abort(err)
 
@@ -497,7 +530,9 @@ class World:
     def _node_error(self, node: Node, inc: Incarnation, exc: BaseException) -> None:
         failure = NodeFailure(inc.label, exc)
         self.node_errors.append(failure)
-        self.trace.emit("node_error", 1, node=inc.label, error=type(exc).__qualname__, message=str(exc))
+        self.trace.emit(
+            "node_error", 1, node=inc.label, error=type(exc).__qualname__, message=str(exc)
+        )
         if self.config.fail_on_node_error:
             self.loop.abort(failure)
 

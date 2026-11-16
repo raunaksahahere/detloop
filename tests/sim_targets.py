@@ -32,7 +32,9 @@ async def test_portable_fixture(world: detloop.World) -> None:
     for i in range(6):
         op = world.history.invoke("c", "echo", value=i)
         try:
-            r, w = await asyncio.wait_for(asyncio.open_connection(world.rng.choice(world.node_names), PORT), 1)
+            r, w = await asyncio.wait_for(
+                asyncio.open_connection(world.rng.choice(world.node_names), PORT), 1
+            )
             w.write(str(i).encode() * 100)
             await asyncio.wait_for(r.readexactly(len(str(i)) * 100), 2)
             op.ok(i)

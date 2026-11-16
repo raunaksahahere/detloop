@@ -19,6 +19,7 @@ API                                    Inside a simulation
 ``socket.create_connection``,          :class:`NondeterminismError`
 ``socket.socketpair/create_server``
 ``threading.Thread.start``             :class:`NondeterminismError`
+``ssl.SSLContext.wrap_bio/socket``     :class:`NondeterminismError` (OpenSSL entropy)
 ``subprocess.Popen``, ``os.system``,   :class:`NondeterminismError`
 ``os.popen``, ``os.fork``
 =====================================  ==========================================
@@ -115,7 +116,9 @@ def installed(world: World) -> Iterator[None]:
                 _installed_patches = []
 
 
-def _wrap(target: Any, name: str, make: Callable[[Any], Any], patches: list[tuple[Any, str, Any]]) -> None:
+def _wrap(
+    target: Any, name: str, make: Callable[[Any], Any], patches: list[tuple[Any, str, Any]]
+) -> None:
     original = _orig(target, name)
     current = getattr(target, name)
     patches.append((target, name, current))
@@ -161,7 +164,9 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
             w = active_world()
             if w is None:
                 return orig(seconds)
-            raise _violation(w, "time.sleep() blocks the simulation thread; use 'await asyncio.sleep()'")
+            raise _violation(
+                w, "time.sleep() blocks the simulation thread; use 'await asyncio.sleep()'"
+            )
 
         return sleep
 
@@ -197,7 +202,9 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
     from .net.socket import SimSocket
 
     def socket_factory(orig: Any) -> Any:
-        def make_socket(family: int = -1, type: int = -1, proto: int = -1, fileno: int | None = None) -> Any:
+        def make_socket(
+            family: int = -1, type: int = -1, proto: int = -1, fileno: int | None = None
+        ) -> Any:
             w = active_world()
             if w is None:
                 return orig(family, type, proto, fileno)
@@ -220,11 +227,15 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
         return make
 
     def sim_getaddrinfo(orig: Any) -> Any:
-        def getaddrinfo(host: Any, port: Any, family: int = 0, type: int = 0, proto: int = 0, flags: int = 0) -> Any:
+        def getaddrinfo(
+            host: Any, port: Any, family: int = 0, type: int = 0, proto: int = 0, flags: int = 0
+        ) -> Any:
             w = active_world()
             if w is None:
                 return orig(host, port, family, type, proto, flags)
-            return w.network.getaddrinfo(host, port, family=family, type=type, proto=proto, flags=flags)
+            return w.network.getaddrinfo(
+                host, port, family=family, type=type, proto=proto, flags=flags
+            )
 
         return getaddrinfo
 
@@ -250,9 +261,24 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
     _wrap(socket, "getaddrinfo", sim_getaddrinfo, patches)
     _wrap(socket, "gethostbyname", sim_gethostbyname, patches)
     _wrap(socket, "gethostname", sim_gethostname, patches)
-    _wrap(socket, "create_connection", blocked("socket.create_connection()", "use asyncio.open_connection()"), patches)
-    _wrap(socket, "create_server", blocked("socket.create_server()", "use asyncio.start_server()"), patches)
-    _wrap(socket, "socketpair", blocked("socket.socketpair()", "nested event loops and pipes are not simulated"), patches)
+    _wrap(
+        socket,
+        "create_connection",
+        blocked("socket.create_connection()", "use asyncio.open_connection()"),
+        patches,
+    )
+    _wrap(
+        socket,
+        "create_server",
+        blocked("socket.create_server()", "use asyncio.start_server()"),
+        patches,
+    )
+    _wrap(
+        socket,
+        "socketpair",
+        blocked("socket.socketpair()", "nested event loops and pipes are not simulated"),
+        patches,
+    )
 
     # --- threads and processes ---------------------------------------------
     def guarded_thread_start(orig: Any) -> Any:
@@ -262,7 +288,8 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
                 return orig(self)  # type: ignore[no-any-return]
             raise _violation(
                 w,
-                f"starting thread {self.name!r} inside a simulation; threads (including executors and "
+                f"starting thread {self.name!r} inside a simulation; threads (including "
+                "executors and "
                 "asyncio.to_thread) are outside the determinism boundary",
             )
 
@@ -271,7 +298,7 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
     _wrap(threading.Thread, "start", guarded_thread_start, patches)
 
     def guarded_popen_init(orig: Any) -> Any:
-        def __init__(self: Any, *args: Any, **kwargs: Any) -> None:  # noqa: N807
+        def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
             w = active_world()
             if w is None:
                 return orig(self, *args, **kwargs)  # type: ignore[no-any-return]
@@ -280,6 +307,26 @@ def _install_patches() -> list[tuple[Any, str, Any]]:
         return __init__
 
     _wrap(subprocess.Popen, "__init__", guarded_popen_init, patches)
+
+    # --- TLS ------------------------------------------------------------------
+    # Libraries such as anyio run TLS in user space over memory BIOs, which
+    # would carry OpenSSL-generated (unseeded) bytes over simulated streams.
+    try:
+        import ssl
+    except ImportError:  # pragma: no cover - Python built without ssl
+        ssl = None  # type: ignore[assignment]
+    if ssl is not None:
+        hint = (
+            "TLS draws entropy inside OpenSSL and is not simulated; "
+            "use plaintext between simulated nodes"
+        )
+        _wrap(ssl.SSLContext, "wrap_bio", blocked("TLS (ssl.SSLContext.wrap_bio)", hint), patches)
+        _wrap(
+            ssl.SSLContext,
+            "wrap_socket",
+            blocked("TLS (ssl.SSLContext.wrap_socket)", hint),
+            patches,
+        )
     for name in ("system", "popen", "fork", "forkpty"):
         if hasattr(os, name):
             _wrap(os, name, blocked(f"os.{name}()", "processes are not simulated"), patches)

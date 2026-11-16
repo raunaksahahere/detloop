@@ -31,7 +31,13 @@ class Fault:
     params: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
-        return {"id": self.id, "kind": self.kind, "at": self.at, "duration": self.duration, "params": self.params}
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "at": self.at,
+            "duration": self.duration,
+            "params": self.params,
+        }
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Fault:
@@ -55,13 +61,18 @@ class Fault:
                 return f"{at}: block {p['a']}->{p['b']}{dur}"
             return f"{at}: partition {p['groups'][0]} | {p['groups'][1]}{dur}"
         if self.kind == "crash":
-            return f"{at}: crash {p['node']}" + (f", restart after {self.duration / NS:g}s" if self.duration else "")
+            return f"{at}: crash {p['node']}" + (
+                f", restart after {self.duration / NS:g}s" if self.duration else ""
+            )
         if self.kind == "reset":
             return f"{at}: reset connections {p['a']}<->{p['b']}"
         if self.kind == "latency":
             return f"{at}: latency x{p['factor']:g} {p['a']}<->{p['b']}{dur}"
         if self.kind == "clock":
-            return f"{at}: clock of {p['node']} offset {p['offset_ns'] / NS:+g}s drift {p['drift_ppm']:+g}ppm{dur}"
+            return (
+                f"{at}: clock of {p['node']} offset {p['offset_ns'] / NS:+g}s "
+                f"drift {p['drift_ppm']:+g}ppm{dur}"
+            )
         return f"{at}: {self.kind} {p}{dur}"
 
 
@@ -96,12 +107,16 @@ def generate(cfg: FaultConfig, nodes: tuple[str, ...], gen: SplitMix64) -> list[
                 # isolate one node from all others
                 victim = nodes[gen.below(len(nodes))]
                 rest = [n for n in nodes if n != victim]
-                fault = Fault(fid, "partition", at, dur, {"groups": [[victim], rest], "oneway": False})
+                fault = Fault(
+                    fid, "partition", at, dur, {"groups": [[victim], rest], "oneway": False}
+                )
             elif shape == 1:
                 mask = 1 + gen.below((1 << len(nodes)) - 2)
                 side_a = [n for j, n in enumerate(nodes) if mask >> j & 1]
                 side_b = [n for j, n in enumerate(nodes) if not mask >> j & 1]
-                fault = Fault(fid, "partition", at, dur, {"groups": [side_a, side_b], "oneway": False})
+                fault = Fault(
+                    fid, "partition", at, dur, {"groups": [side_a, side_b], "oneway": False}
+                )
             else:
                 a = nodes[gen.below(len(nodes))]
                 b = [n for n in nodes if n != a][gen.below(len(nodes) - 1)]
@@ -126,7 +141,13 @@ def generate(cfg: FaultConfig, nodes: tuple[str, ...], gen: SplitMix64) -> list[
             max_ppm = round(cfg.clock_drift_ppm_max)
             drift = gen.below(2 * max_ppm + 1) - max_ppm
             dur = _uniform_ns(gen, *cfg.partition_duration)
-            fault = Fault(fid, "clock", at, dur, {"node": node, "offset_ns": offset_ms * 1_000_000, "drift_ppm": drift})
+            fault = Fault(
+                fid,
+                "clock",
+                at,
+                dur,
+                {"node": node, "offset_ns": offset_ms * 1_000_000, "drift_ppm": drift},
+            )
         faults.append((at, i, fault))
     faults.sort(key=lambda x: (x[0], x[1]))
     return [f for _, _, f in faults]

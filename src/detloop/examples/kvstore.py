@@ -36,6 +36,7 @@ Planted bugs (independently selectable):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import random
 from collections.abc import Callable
@@ -143,7 +144,9 @@ class RaftNode:
                 conn = self.conns.get(peer)
                 if conn is None:
                     host, port = self.cfg.peers[peer]
-                    conn = await asyncio.wait_for(asyncio.open_connection(host, port), self.cfg.rpc_timeout)
+                    conn = await asyncio.wait_for(
+                        asyncio.open_connection(host, port), self.cfg.rpc_timeout
+                    )
                     self.conns[peer] = conn
                 reader, writer = conn
                 await _send(writer, msg)
@@ -206,7 +209,13 @@ class RaftNode:
         self.role = "candidate"
         self.leader = None
         last_term, last_index = self.last()
-        msg = {"type": "vote", "term": term, "candidate": self.name, "last_term": last_term, "last_index": last_index}
+        msg = {
+            "type": "vote",
+            "term": term,
+            "candidate": self.name,
+            "last_term": last_term,
+            "last_index": last_index,
+        }
 
         async def ask(peer: str) -> bool:
             try:
@@ -256,11 +265,16 @@ class RaftNode:
             ni = self.next_index[peer]
             prev_index = ni - 1
             prev_term = self.log[prev_index - 1][0] if prev_index > 0 else 0
-            entries = self.log[ni - 1:]
+            entries = self.log[ni - 1 :]
             started_round = self.round
             msg = {
-                "type": "append", "term": term, "leader": self.name, "prev_index": prev_index,
-                "prev_term": prev_term, "entries": entries, "commit": self.commit,
+                "type": "append",
+                "term": term,
+                "leader": self.name,
+                "prev_index": prev_index,
+                "prev_term": prev_term,
+                "entries": entries,
+                "commit": self.commit,
             }
             try:
                 r = await self.call(peer, msg)
@@ -281,10 +295,8 @@ class RaftNode:
                 self.next_index[peer] = max(1, min(ni - 1, r.get("hint", ni - 1)))
                 continue
             self.kick.clear()
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self.kick.wait(), self.cfg.heartbeat)
-            except TimeoutError:
-                pass
 
     def note_ack(self, peer: str, started_round: int) -> None:
         # A round is confirmed once a majority (counting the leader) acknowledged
@@ -324,7 +336,7 @@ class RaftNode:
             idx = prev + i + 1
             if idx <= len(log):
                 if log[idx - 1][0] != entry[0]:
-                    del log[idx - 1:]
+                    del log[idx - 1 :]
                     log.append(entry)
             else:
                 log.append(entry)
@@ -376,15 +388,15 @@ class RaftNode:
                 if self.role != "leader" or self.term != term:
                     return {"ok": False, "err": "unknown"}
                 ev = self.round_event
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(ev.wait(), self.cfg.heartbeat * 2)
-                except TimeoutError:
-                    pass
             return {"ok": True, "value": self.kv.get(msg["key"])}
         return {"ok": False, "err": "bad op"}
 
 
-async def run_node(name: str, cfg: KVConfig, disk: dict[str, Any], observer: Observer | None = None) -> None:
+async def run_node(
+    name: str, cfg: KVConfig, disk: dict[str, Any], observer: Observer | None = None
+) -> None:
     """Entry point for one KV node (real asyncio or detloop)."""
     node = RaftNode(name, cfg, disk, observer or Observer())
     await node.serve()
@@ -399,8 +411,14 @@ class KVClient:
     retried, so a ``put`` is applied at most once.
     """
 
-    def __init__(self, name: str, peers: dict[str, tuple[str, int]], history: Any, rng: Any,
-                 timeout: float = 1.0) -> None:
+    def __init__(
+        self,
+        name: str,
+        peers: dict[str, tuple[str, int]],
+        history: Any,
+        rng: Any,
+        timeout: float = 1.0,
+    ) -> None:
         self.name = name
         self.peers = peers
         self.history = history

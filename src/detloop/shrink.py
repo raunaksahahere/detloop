@@ -21,6 +21,7 @@ transformations, not globally minimal.
 
 from __future__ import annotations
 
+import functools
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -31,13 +32,13 @@ from .config import SimConfig
 from .errors import ReplayMismatch
 from .faults import Fault, schedule_from_json
 from .rng import Tape
+from .runner import PASS, RunResult, run
+
+T = TypeVar("T")
 
 #: Scheduling and network decisions are simplified before workload decisions,
 #: which tend to change what the test does rather than how it interleaves.
 SHRINK_ORDER = ("sched", "net", "workload")
-from .runner import PASS, RunResult, run
-
-T = TypeVar("T")
 _perf = time.perf_counter
 
 
@@ -102,18 +103,34 @@ class Shrinker:
         if self.runs >= self.max_runs or _perf() > self._deadline:
             raise _Budget
         self.runs += 1
-        return run(self.spec.fn, seed=self.seed, config=self.config, faults=faults, tapes=tapes,
-                   decision_mode=mode, keep_trace=False)
+        return run(
+            self.spec.fn,
+            seed=self.seed,
+            config=self.config,
+            faults=faults,
+            tapes=tapes,
+            decision_mode=mode,
+            keep_trace=False,
+        )
 
     def _accept(self, r: RunResult) -> bool:
         return r.status != PASS and r.signature == self.signature
 
-    def shrink(self, faults: list[Fault] | None = None, tapes: dict[str, Tape] | None = None) -> ShrinkResult:
+    def shrink(
+        self, faults: list[Fault] | None = None, tapes: dict[str, Tape] | None = None
+    ) -> ShrinkResult:
         start = _perf()
         self._deadline = start + self.max_seconds
         mode = "guided" if tapes is not None else "seeded"
-        original = run(self.spec.fn, seed=self.seed, config=self.config, faults=faults, tapes=tapes,
-                       decision_mode=mode, keep_trace=False)
+        original = run(
+            self.spec.fn,
+            seed=self.seed,
+            config=self.config,
+            faults=faults,
+            tapes=tapes,
+            decision_mode=mode,
+            keep_trace=False,
+        )
         self.runs = 1
         if original.status == PASS:
             raise ReplayMismatch(f"seed {self.seed} passes; nothing to shrink")
@@ -134,7 +151,7 @@ class Shrinker:
                 progress = False
                 # Phase 1: faults
                 if cur_faults:
-                    kept = self._ddmin(cur_faults, lambda fs: self._try(fs, cur_tapes))
+                    kept = self._ddmin(cur_faults, functools.partial(self._try, tapes=cur_tapes))
                     if len(kept) < len(cur_faults):
                         r = self._last_ok
                         cur_faults, cur_tapes, best = kept, self._tapes_of(r), r
@@ -155,15 +172,25 @@ class Shrinker:
         except _Budget:
             status = "budget_exhausted"
         # Final: strict replay of the chosen candidate must reproduce it exactly.
-        final = run(self.spec.fn, seed=self.seed, config=self.config, faults=cur_faults, tapes=cur_tapes,
-                    decision_mode="strict", keep_trace=True)
+        final = run(
+            self.spec.fn,
+            seed=self.seed,
+            config=self.config,
+            faults=cur_faults,
+            tapes=cur_tapes,
+            decision_mode="strict",
+            keep_trace=True,
+        )
         if final.signature != self.signature or final.trace_sha256 != best.trace_sha256:
             raise ReplayMismatch(
                 "strict replay of the shrunk run did not reproduce it "
-                f"(signature {final.signature!r} vs {self.signature!r}); this indicates nondeterminism "
+                f"(signature {final.signature!r} vs {self.signature!r}); this indicates "
+                "nondeterminism "
                 "in the code under test or a detloop bug"
             )
-        result = ShrinkResult(original, final, self.runs + 1, status, _perf() - start, cur_faults, cur_tapes)
+        result = ShrinkResult(
+            original, final, self.runs + 1, status, _perf() - start, cur_faults, cur_tapes
+        )
         result.config = self.config
         return result
 
@@ -190,7 +217,7 @@ class Shrinker:
         n = 2
         while len(items) >= 2:
             size = max(1, len(items) // n)
-            chunks = [items[i:i + size] for i in range(0, len(items), size)]
+            chunks = [items[i : i + size] for i in range(0, len(items), size)]
             reduced = False
             for i in range(len(chunks)):
                 complement = [x for j, c in enumerate(chunks) if j != i for x in c]
@@ -212,7 +239,9 @@ class Shrinker:
         out[stream] = Tape([], values)
         return out
 
-    def _shrink_tape(self, stream: str, faults: list[Fault], tapes: dict[str, Tape]) -> RunResult | None:
+    def _shrink_tape(
+        self, stream: str, faults: list[Fault], tapes: dict[str, Tape]
+    ) -> RunResult | None:
         values = list(tapes[stream].values)
         improved: RunResult | None = None
         # truncation: smallest prefix that still fails
@@ -255,5 +284,7 @@ def shrink(
     log: Callable[[str], None] | None = None,
 ) -> ShrinkResult:
     """Shrink the failure of ``spec`` at ``seed`` (see module docs)."""
-    shrinker = Shrinker(spec, config or spec.config, seed, max_runs=max_runs, max_seconds=max_seconds, log=log)
+    shrinker = Shrinker(
+        spec, config or spec.config, seed, max_runs=max_runs, max_seconds=max_seconds, log=log
+    )
     return shrinker.shrink(faults, tapes)

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import heapq
 import logging
 import math
@@ -38,7 +39,7 @@ import warnings
 import weakref
 from collections.abc import Callable, Coroutine
 from contextvars import Context
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from . import _compat
 from ._owner import OWNER, Owner, owner_label
@@ -78,10 +79,22 @@ _GC_MESSAGES = frozenset(
 
 class SimHandle(asyncio.Handle):
     __slots__ = ("_owner", "_seq")
+    _owner: Owner | None
+    _seq: int
+    _callback: Any  # stdlib slot, not declared in typeshed
 
 
 class SimTimerHandle(asyncio.TimerHandle):
     __slots__ = ("_owner", "_seq", "_when_ns")
+    _owner: Owner | None
+    _seq: int
+    _when_ns: int
+    _scheduled: bool  # stdlib slot, not declared in typeshed
+    _callback: Any
+
+
+#: Anything that can sit in a ready queue.
+ReadyHandle = SimHandle | SimTimerHandle
 
 
 def _run_until_complete_cb(fut: asyncio.Future[Any]) -> None:
@@ -89,7 +102,7 @@ def _run_until_complete_cb(fut: asyncio.Future[Any]) -> None:
 
 
 def to_ns(seconds: float) -> int:
-    if seconds != seconds:
+    if math.isnan(seconds):
         raise ValueError("time must not be NaN")
     if seconds == math.inf:
         return _NEVER
@@ -120,6 +133,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         self._config = config or SimConfig(nodes=())
         self._decisions = decisions or Decisions(0)
         self._trace = trace or Trace("off")
+        self._now = 0
         self._trace.bind_clock(lambda: self._now)
         self._world = world
         self._mode = self._config.scheduler
@@ -132,8 +146,8 @@ class SimLoop(asyncio.AbstractEventLoop):
         self._now = 0
         self._seq = 0
         self._batch_limit = 0
-        self._fifo: collections.deque[SimHandle] = collections.deque()
-        self._queues: dict[Owner | None, collections.deque[SimHandle]] = {}
+        self._fifo: collections.deque[ReadyHandle] = collections.deque()
+        self._queues: dict[Owner | None, collections.deque[ReadyHandle]] = {}
         self._due: dict[Owner | None, collections.deque[SimTimerHandle]] = {}
         self._limits: dict[Owner | None, int] = {}
         self._timers: list[tuple[int, int, SimTimerHandle]] = []
@@ -161,7 +175,9 @@ class SimLoop(asyncio.AbstractEventLoop):
         self._teardown_budget_end = 0
         self._tasks: dict[int, tuple[asyncio.Task[Any], Owner | None]] = {}
         self._prune_at = 64
-        self._task_ids: weakref.WeakKeyDictionary[asyncio.Task[Any], int] = weakref.WeakKeyDictionary()
+        self._task_ids: weakref.WeakKeyDictionary[asyncio.Task[Any], int] = (
+            weakref.WeakKeyDictionary()
+        )
         self._next_task_id = 1
         self.loop_errors: list[dict[str, Any]] = []
         self.warnings: list[str] = []
@@ -192,10 +208,8 @@ class SimLoop(asyncio.AbstractEventLoop):
             if current is not None:
                 # A context created from scratch inside a node: adopt it so
                 # that work scheduled from it cannot outlive a crash.
-                try:
+                with contextlib.suppress(RuntimeError):
                     context.run(OWNER.set, current)
-                except RuntimeError:
-                    pass
         return owner  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
@@ -204,7 +218,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         if self._closed:
             raise RuntimeError("Event loop is closed")
 
-    def call_soon(
+    def call_soon(  # type: ignore[override]  # typeshed uses TypeVarTuple
         self, callback: Callable[..., object], *args: Any, context: Context | None = None
     ) -> SimHandle:
         self._check_closed()
@@ -224,7 +238,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         if not callable(callback):
             raise TypeError(f"a callable object was expected by {method}(), got {callback!r}")
 
-    def _enqueue(self, h: SimHandle) -> None:
+    def _enqueue(self, h: ReadyHandle) -> None:
         if self._mode == "fifo":
             self._fifo.append(h)
             return
@@ -233,11 +247,12 @@ class SimLoop(asyncio.AbstractEventLoop):
             q = self._queues[h._owner] = collections.deque()
         q.append(h)
 
-    def call_soon_threadsafe(
+    def call_soon_threadsafe(  # type: ignore[override]  # typeshed uses TypeVarTuple
         self, callback: Callable[..., object], *args: Any, context: Context | None = None
     ) -> SimHandle:
         if self._thread_id is not None and threading.get_ident() != self._thread_id:
-            msg = f"call_soon_threadsafe({getattr(callback, '__qualname__', callback)!r}) from another thread"
+            name = getattr(callback, "__qualname__", callback)
+            msg = f"call_soon_threadsafe({name!r}) from another thread"
             with self._xthread_lock:
                 self._xthread_calls.append(msg)
             raise NondeterminismError(
@@ -245,7 +260,7 @@ class SimLoop(asyncio.AbstractEventLoop):
             )
         return self.call_soon(callback, *args, context=context)
 
-    def call_later(
+    def call_later(  # type: ignore[override]  # typeshed uses TypeVarTuple
         self,
         delay: float,
         callback: Callable[..., object],
@@ -256,7 +271,7 @@ class SimLoop(asyncio.AbstractEventLoop):
             raise TypeError("delay must not be None")
         return self._call_at_ns(self._now + to_ns(delay), callback, args, context)
 
-    def call_at(
+    def call_at(  # type: ignore[override]  # typeshed uses TypeVarTuple
         self,
         when: float,
         callback: Callable[..., object],
@@ -352,12 +367,12 @@ class SimLoop(asyncio.AbstractEventLoop):
             out.append(h)
         return out
 
-    def _pick(self, stopping: bool = False) -> SimHandle | None:
+    def _pick(self, stopping: bool = False) -> ReadyHandle | None:
         if self._mode == "fifo":
             return self._pick_fifo(stopping)
         return self._pick_owner(stopping)
 
-    def _pick_fifo(self, stopping: bool) -> SimHandle | None:
+    def _pick_fifo(self, stopping: bool) -> ReadyHandle | None:
         q = self._fifo
         while True:
             if q and q[0]._seq < self._batch_limit:
@@ -372,14 +387,14 @@ class SimLoop(asyncio.AbstractEventLoop):
                 q.append(h)
             self._batch_limit = self._seq
 
-    def _pick_owner(self, stopping: bool) -> SimHandle | None:
+    def _pick_owner(self, stopping: bool) -> ReadyHandle | None:
         queues, due, limits = self._queues, self._due, self._limits
         while True:
-            for h in self._pop_due():
-                d = due.get(h._owner)
+            for th in self._pop_due():
+                d = due.get(th._owner)
                 if d is None:
-                    d = due[h._owner] = collections.deque()
-                d.append(h)
+                    d = due[th._owner] = collections.deque()
+                d.append(th)
             cands: list[tuple[int, Owner | None]] = []
             for k, q in queues.items():
                 if q and (not stopping or q[0]._seq < limits.get(k, -1)):
@@ -400,23 +415,27 @@ class SimLoop(asyncio.AbstractEventLoop):
             key = cands[idx][1]
             if self._trace.level >= 2:
                 self._trace.emit(
-                    "choose", 2, n=len(cands), pick=owner_label(key),
+                    "choose",
+                    2,
+                    n=len(cands),
+                    pick=owner_label(key),
                     of=[owner_label(c[1]) for c in cands],
                 )
-        q = queues.get(key)
+        q2 = queues.get(key)
         limit = limits.get(key, -1)
-        if q is None or not q or q[0]._seq >= limit:
+        if q2 is None or not q2 or q2[0]._seq >= limit:
             # This owner starts a new iteration: its due timers join after the
             # handles already queued, and everything now queued is its batch.
-            if q is None:
-                q = queues[key] = collections.deque()
+            if q2 is None:
+                q2 = queues[key] = collections.deque()
             d = due.pop(key, None)
             if d:
-                for h in d:
-                    h._seq = self._seq
+                for th in d:
+                    th._seq = self._seq
                     self._seq += 1
-                    q.append(h)
+                    q2.append(th)
             limit = limits[key] = self._seq
+        q = q2
         if self._mode == "relaxed":
             eligible = 0
             for h in q:
@@ -462,7 +481,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         self._execute(h)
         return True
 
-    def _execute(self, h: SimHandle) -> None:
+    def _execute(self, h: ReadyHandle) -> None:
         if h._cancelled:
             return
         owner = h._owner
@@ -475,9 +494,7 @@ class SimLoop(asyncio.AbstractEventLoop):
                 raise BudgetExceeded("teardown_steps", "teardown step budget exhausted")
         else:
             if self.steps > self._max_steps:
-                raise BudgetExceeded(
-                    "steps", f"step budget of {self._max_steps} handles exhausted"
-                )
+                raise BudgetExceeded("steps", f"step budget of {self._max_steps} handles exhausted")
             if self.steps - self._steps_at_progress > self._max_idle:
                 raise StarvationError(
                     f"{self._max_idle} steps ran without virtual time advancing at "
@@ -593,7 +610,8 @@ class SimLoop(asyncio.AbstractEventLoop):
             if isinstance(result, Exception):
                 self.call_exception_handler(
                     {
-                        "message": f"an error occurred during closing of asynchronous generator {agen!r}",
+                        "message": "an error occurred during closing of "
+                        f"asynchronous generator {agen!r}",
                         "exception": result,
                         "asyncgen": agen,
                     }
@@ -606,7 +624,8 @@ class SimLoop(asyncio.AbstractEventLoop):
     def _asyncgen_firstiter_hook(self, agen: Any) -> None:
         if self._asyncgens_shutdown_called:
             warnings.warn(
-                f"asynchronous generator {agen!r} was scheduled after loop.shutdown_asyncgens() call",
+                f"asynchronous generator {agen!r} was scheduled after "
+                "loop.shutdown_asyncgens() call",
                 ResourceWarning,
                 source=self,
                 stacklevel=2,
@@ -646,7 +665,7 @@ class SimLoop(asyncio.AbstractEventLoop):
         if self._task_factory is not None:
             if context is not None:
                 kwargs["context"] = context
-            task = self._task_factory(self, coro, **kwargs)
+            task = cast("asyncio.Task[_T]", self._task_factory(self, coro, **kwargs))
             task.set_name(name)
         else:
             task = asyncio.Task(coro, loop=self, name=name, context=context, **kwargs)
@@ -654,7 +673,10 @@ class SimLoop(asyncio.AbstractEventLoop):
         if self._trace.level >= 2:
             self._task_ids[task] = tid
             self._trace.emit(
-                "task", 2, task=tid, owner=owner_label(owner),
+                "task",
+                2,
+                task=tid,
+                owner=owner_label(owner),
                 coro=getattr(coro, "__qualname__", type(coro).__name__),
             )
         return task
@@ -710,7 +732,11 @@ class SimLoop(asyncio.AbstractEventLoop):
             if obj is None:
                 break
             name = getattr(obj, "__qualname__", None)
-            frame = getattr(obj, "cr_frame", None) or getattr(obj, "gi_frame", None) or getattr(obj, "ag_frame", None)
+            frame = (
+                getattr(obj, "cr_frame", None)
+                or getattr(obj, "gi_frame", None)
+                or getattr(obj, "ag_frame", None)
+            )
             if name is None or frame is None:
                 break
             chain.append(name)
@@ -774,7 +800,9 @@ class SimLoop(asyncio.AbstractEventLoop):
             if self._config.fail_on_loop_errors:
                 from .errors import SimulationError
 
-                self.abort(SimulationError(f"loop exception handler called: {message}: {record['detail']}"))
+                self.abort(
+                    SimulationError(f"loop exception handler called: {message}: {record['detail']}")
+                )
         try:
             if self._exception_handler is None:
                 self.default_exception_handler(context)
@@ -793,11 +821,14 @@ class SimLoop(asyncio.AbstractEventLoop):
 
     # ------------------------------------------------------------------
     # Executors (outside the determinism boundary)
-    def run_in_executor(self, executor: Any, func: Callable[..., _T], *args: Any) -> asyncio.Future[_T]:
+    def run_in_executor(  # type: ignore[override]  # typeshed uses TypeVarTuple
+        self, executor: Any, func: Callable[..., _T], *args: Any
+    ) -> asyncio.Future[_T]:
         self._check_closed()
         if self._config.executor != "inline":
             raise NondeterminismError(
-                f"run_in_executor({getattr(func, '__qualname__', func)!r}) would run code on a real "
+                f"run_in_executor({getattr(func, '__qualname__', func)!r}) would run code on "
+                "a real "
                 "thread, which is outside the determinism boundary. Make the call synchronous, "
                 "or opt in with executor='inline' to run it on the simulation thread."
             )
@@ -821,17 +852,31 @@ class SimLoop(asyncio.AbstractEventLoop):
         return self._world.network
 
     async def getaddrinfo(
-        self, host: Any, port: Any, *, family: int = 0, type: int = 0, proto: int = 0, flags: int = 0
+        self,
+        host: Any,
+        port: Any,
+        *,
+        family: int = 0,
+        type: int = 0,
+        proto: int = 0,
+        flags: int = 0,
     ) -> list[Any]:
-        return self._net().getaddrinfo(host, port, family=family, type=type, proto=proto, flags=flags)  # type: ignore[no-any-return]
+        infos: list[Any] = self._net().getaddrinfo(
+            host, port, family=family, type=type, proto=proto, flags=flags
+        )
+        return infos
 
     async def getnameinfo(self, sockaddr: Any, flags: int = 0) -> tuple[str, str]:
         return self._net().getnameinfo(sockaddr, flags)  # type: ignore[no-any-return]
 
-    async def create_connection(self, protocol_factory: Any, host: Any = None, port: Any = None, **kwargs: Any) -> Any:  # type: ignore[override]
+    async def create_connection(
+        self, protocol_factory: Any, host: Any = None, port: Any = None, **kwargs: Any
+    ) -> Any:
         return await self._net().create_connection(protocol_factory, host, port, **kwargs)
 
-    async def create_server(self, protocol_factory: Any, host: Any = None, port: Any = None, **kwargs: Any) -> Any:  # type: ignore[override]
+    async def create_server(
+        self, protocol_factory: Any, host: Any = None, port: Any = None, **kwargs: Any
+    ) -> Any:
         return await self._net().create_server(protocol_factory, host, port, **kwargs)
 
     async def sock_connect(self, sock: Any, address: Any) -> None:
@@ -844,78 +889,79 @@ class SimLoop(asyncio.AbstractEventLoop):
             f"{what} is not supported inside a detloop simulation" + (f"; {hint}" if hint else "")
         )
 
-    async def create_unix_connection(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def create_unix_connection(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("UNIX domain sockets", "use TCP between simulated nodes")
 
-    async def create_unix_server(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def create_unix_server(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("UNIX domain sockets", "use TCP between simulated nodes")
 
-    async def create_datagram_endpoint(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def create_datagram_endpoint(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported(
-            "create_datagram_endpoint", "use World.messages (node.messages) for datagram-style messaging"
+            "create_datagram_endpoint",
+            "use World.messages (node.messages) for datagram-style messaging",
         )
 
-    async def connect_accepted_socket(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def connect_accepted_socket(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("connect_accepted_socket")
 
-    async def start_tls(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def start_tls(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("TLS", "simulate plaintext connections")
 
-    async def sendfile(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sendfile(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sendfile")
 
-    async def subprocess_exec(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def subprocess_exec(self, *a: Any, **k: Any) -> Any:
         raise NondeterminismError("subprocesses are outside the determinism boundary")
 
-    async def subprocess_shell(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def subprocess_shell(self, *a: Any, **k: Any) -> Any:
         raise NondeterminismError("subprocesses are outside the determinism boundary")
 
-    async def connect_read_pipe(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def connect_read_pipe(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("pipes")
 
-    async def connect_write_pipe(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def connect_write_pipe(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("pipes")
 
     def add_reader(self, *a: Any, **k: Any) -> None:  # type: ignore[override]
         raise self._unsupported("add_reader (file-descriptor I/O)")
 
-    def remove_reader(self, *a: Any, **k: Any) -> bool:  # type: ignore[override]
+    def remove_reader(self, *a: Any, **k: Any) -> bool:
         return False
 
     def add_writer(self, *a: Any, **k: Any) -> None:  # type: ignore[override]
         raise self._unsupported("add_writer (file-descriptor I/O)")
 
-    def remove_writer(self, *a: Any, **k: Any) -> bool:  # type: ignore[override]
+    def remove_writer(self, *a: Any, **k: Any) -> bool:
         return False
 
-    async def sock_recv(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_recv(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_recv", "use transports/streams")
 
-    async def sock_recv_into(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_recv_into(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_recv_into", "use transports/streams")
 
-    async def sock_recvfrom(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_recvfrom(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_recvfrom")
 
-    async def sock_recvfrom_into(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_recvfrom_into(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_recvfrom_into")
 
-    async def sock_sendall(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_sendall(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_sendall", "use transports/streams")
 
-    async def sock_sendto(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_sendto(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_sendto")
 
-    async def sock_accept(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_accept(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_accept", "use create_server/start_server")
 
-    async def sock_sendfile(self, *a: Any, **k: Any) -> Any:  # type: ignore[override]
+    async def sock_sendfile(self, *a: Any, **k: Any) -> Any:
         raise self._unsupported("loop.sock_sendfile")
 
     def add_signal_handler(self, *a: Any, **k: Any) -> None:  # type: ignore[override]
         raise self._unsupported("signal handlers")
 
-    def remove_signal_handler(self, *a: Any, **k: Any) -> bool:  # type: ignore[override]
+    def remove_signal_handler(self, *a: Any, **k: Any) -> bool:
         return False
 
     def __repr__(self) -> str:

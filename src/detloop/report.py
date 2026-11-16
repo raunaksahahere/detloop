@@ -25,6 +25,7 @@ from .artifacts import atomic_write, load_db, read_manifest
 from .errors import ConfigError
 from .trace import read_trace
 
+_LS, _PS = chr(0x2028), chr(0x2029)  # JS line/paragraph separators
 #: Embedded events are capped to keep reports well below browser limits.
 MAX_EMBEDDED_EVENTS = 100_000
 
@@ -40,13 +41,15 @@ def embed_json(data: Any) -> str:
         text.replace("&", "\\u0026")
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
-        .replace(" ", "\\u2028")
-        .replace(" ", "\\u2029")
+        .replace(_LS, "\\u2028")
+        .replace(_PS, "\\u2029")
     )
 
 
 def _csp_hash(text: str) -> str:
-    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode() + "'"
+    return (
+        "'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode() + "'"
+    )
 
 
 def build_html(data: dict[str, Any], title: str) -> str:
@@ -73,7 +76,9 @@ def build_html(data: dict[str, Any], title: str) -> str:
     )
 
 
-def _run_data(manifest: dict[str, Any] | None, events: list[dict[str, Any]], manifest_path: str | None) -> dict[str, Any]:
+def _run_data(
+    manifest: dict[str, Any] | None, events: list[dict[str, Any]], manifest_path: str | None
+) -> dict[str, Any]:
     truncated = len(events) > MAX_EMBEDDED_EVENTS
     nodes: list[str] = []
     if events and events[0].get("k") == "header":
@@ -84,10 +89,15 @@ def _run_data(manifest: dict[str, Any] | None, events: list[dict[str, Any]], man
     if manifest:
         t = manifest.get("target", {})
         if not manifest.get("decisions") and not manifest.get("faults_explicit"):
-            replay.append(f"pytest {shlex.quote(str(t.get('location')) + '::' + str(t.get('test')))} "
-                          f"--detloop-seed={manifest.get('seed')}")
+            replay.append(
+                f"pytest {shlex.quote(str(t.get('location')) + '::' + str(t.get('test')))} "
+                f"--detloop-seed={manifest.get('seed')}"
+            )
         elif manifest_path:
-            replay.append(f"pytest {shlex.quote(str(t.get('location')))} --detloop-replay={shlex.quote(manifest_path)}")
+            replay.append(
+                f"pytest {shlex.quote(str(t.get('location')))} "
+                f"--detloop-replay={shlex.quote(manifest_path)}"
+            )
     return {
         "kind": "run",
         "manifest": manifest or {},
@@ -122,6 +132,8 @@ def render_report(input_path: str, output_path: str) -> str:
         seed = events[0].get("seed") if events else "?"
         title = f"detloop trace report: seed {seed}"
     else:
-        raise ConfigError("report input must be a manifest (.json), trace (.jsonl) or results database (.sqlite)")
+        raise ConfigError(
+            "report input must be a manifest (.json), trace (.jsonl) or results database (.sqlite)"
+        )
     atomic_write(output_path, build_html(data, title))
     return output_path

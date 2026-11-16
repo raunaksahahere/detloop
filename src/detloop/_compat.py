@@ -26,6 +26,7 @@ Task step callbacks expose ``__self__``
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 from asyncio import events
 from typing import Any
@@ -53,10 +54,8 @@ def task_of_callback(callback: Any) -> asyncio.Task[Any] | None:
 
 
 def silence_pending_destroy(task: asyncio.Future[Any]) -> None:
-    try:
+    with contextlib.suppress(AttributeError):  # defensive; verified in tests
         task._log_destroy_pending = False  # type: ignore[attr-defined]
-    except AttributeError:  # pragma: no cover - defensive, verified in tests
-        pass
 
 
 def is_supported_runtime() -> bool:

@@ -126,10 +126,13 @@ ignore = [
     "SIM108",
     "PLW0603",  # module-level state is limited to guards and explicitly documented
     "RUF012",
+    "PLR0917",  # positional-argument count: a complexity heuristic like PLR0913
+    "PLC0415",  # local imports are deliberate: they break import cycles (loop/world/net)
+                # and keep CLI and pytest-plugin start-up free of unused modules
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "PLR", "B011", "PT011", "PT012", "SIM117", "RUF001", "RUF006", "PLC0415", "B018", "E501"]
+"tests/**" = ["S", "PLR", "B011", "PT011", "PT012", "PT018", "SIM117", "RUF001", "RUF006", "B018", "E501"]
 "examples/**" = ["S", "PLC0415"]
 "benchmarks/**" = ["S", "PLC0415", "T20"]
 "scripts/**" = ["S", "PLC0415", "T20"]

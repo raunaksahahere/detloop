@@ -38,7 +38,11 @@ def test_serial_and_parallel_agree_per_seed(tmp_path: object, in_root: None) -> 
     assert serial.results.keys() == parallel.results.keys()
     for s in serial.results:
         a, b = serial.results[s], parallel.results[s]
-        assert (a["status"], a["signature"], a["trace_sha256"]) == (b["status"], b["signature"], b["trace_sha256"])
+        assert (a["status"], a["signature"], a["trace_sha256"]) == (
+            b["status"],
+            b["signature"],
+            b["trace_sha256"],
+        )
     assert serial.first_failure == parallel.first_failure is not None
     assert serial.exit_code() == parallel.exit_code() == 1
 
@@ -56,8 +60,14 @@ def test_max_failures_cutoff_is_deterministic(in_root: None) -> None:
 
 def test_hard_kill_of_cpu_bound_worker(in_root: None) -> None:
     spec = spec_of(sim_targets.test_cpu_hog)
-    r = explore(spec, range(3), target=Target("tests/sim_targets.py", "test_cpu_hog"), jobs=2, artifacts_dir=None,
-                config=spec.config.with_overrides(wall_timeout=1.0))
+    r = explore(
+        spec,
+        range(3),
+        target=Target("tests/sim_targets.py", "test_cpu_hog"),
+        jobs=2,
+        artifacts_dir=None,
+        config=spec.config.with_overrides(wall_timeout=1.0),
+    )
     assert r.results[1]["status"] == "incomplete"
     assert r.results[1]["signature"] == "wall_timeout"
     assert r.results[0]["status"] == r.results[2]["status"] == "pass"
@@ -101,23 +111,41 @@ def test_shrink_preserves_signature_and_replays_strictly(in_root: None) -> None:
     from detloop.faults import Fault
 
     spec = spec_of(sim_targets.test_racy_counter)
-    seed = next(s for s in range(30) if detloop.run(spec.fn, seed=s, config=spec.config).status == "fail")
-    noise = [Fault(f"f{i}", "latency", int((0.1 + i * 0.1) * 1e9), int(0.05e9), {"a": "n1", "b": "n2", "factor": 3.0})
-             for i in range(4)]
+    seed = next(
+        s for s in range(30) if detloop.run(spec.fn, seed=s, config=spec.config).status == "fail"
+    )
+    noise = [
+        Fault(
+            f"f{i}",
+            "latency",
+            int((0.1 + i * 0.1) * 1e9),
+            int(0.05e9),
+            {"a": "n1", "b": "n2", "factor": 3.0},
+        )
+        for i in range(4)
+    ]
     sr = shrink(spec, seed, config=spec.config, faults=noise, max_runs=150)
     m = sr.metrics()
     assert sr.final.signature == sr.original.signature
     assert m["faults"][1] < m["faults"][0]
     assert m["nonzero_decisions"][1] <= m["nonzero_decisions"][0]
     assert m["status"] in ("fixed_point", "budget_exhausted") and m["globally_minimal"] is False
-    again = detloop.run(spec.fn, seed=seed, config=sr.config, faults=sr.faults, tapes=sr.tapes,
-                        decision_mode="strict")
+    again = detloop.run(
+        spec.fn,
+        seed=seed,
+        config=sr.config,
+        faults=sr.faults,
+        tapes=sr.tapes,
+        decision_mode="strict",
+    )
     assert again.trace_sha256 == sr.final.trace_sha256
 
 
 def test_shrink_budget_exhaustion_is_reported(in_root: None) -> None:
     spec = spec_of(sim_targets.test_racy_counter)
-    seed = next(s for s in range(30) if detloop.run(spec.fn, seed=s, config=spec.config).status == "fail")
+    seed = next(
+        s for s in range(30) if detloop.run(spec.fn, seed=s, config=spec.config).status == "fail"
+    )
     sr = shrink(spec, seed, config=spec.config, max_runs=2)
     assert sr.status == "budget_exhausted"
     assert sr.final.signature == sr.original.signature

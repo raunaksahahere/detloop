@@ -182,9 +182,8 @@ class SimServer(asyncio.AbstractServer):
             self._serving_forever_fut = None
 
     async def wait_closed(self) -> None:
-        if PY_VERSION < (3, 12):
-            if self._closed or self._waiters is None:
-                return
+        if PY_VERSION < (3, 12) and (self._closed or self._waiters is None):
+            return
         if self._waiters is None:
             return
         waiter: asyncio.Future[None] = self._loop.create_future()

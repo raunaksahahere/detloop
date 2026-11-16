@@ -41,7 +41,11 @@ def brute_force(ops: list[Operation], initial: Any = None) -> bool:
         for chosen in itertools.combinations(maybe, k):
             subset = definite + list(chosen)
             for perm in itertools.permutations(subset):
-                if any(_precedes(perm[j], perm[i]) for i in range(len(perm)) for j in range(i + 1, len(perm))):
+                if any(
+                    _precedes(perm[j], perm[i])
+                    for i in range(len(perm))
+                    for j in range(i + 1, len(perm))
+                ):
                     continue
                 states = [initial]
                 for op in perm:

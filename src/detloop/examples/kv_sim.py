@@ -16,6 +16,8 @@ The ``test_kv_<bug>`` variants contain a planted bug and are *expected to fail*;
 from __future__ import annotations
 
 import asyncio
+from typing import Any
+
 import detloop
 from detloop.checker import KVModel, assert_linearizable
 from detloop.examples.kvstore import KVClient, KVConfig, Observer, run_node
@@ -29,7 +31,7 @@ DURATION = 4.0
 
 async def scenario(world: detloop.World, bugs: tuple[str, ...]) -> None:
     """Run the KV workload against nodes with the given planted ``bugs``."""
-    if True:  # noqa: SIM108 - keeps the scenario body indented as one block
+    if True:
         peers = {name: (name, PORT) for name in world.node_names}
         cfg = KVConfig(peers=peers, bugs=frozenset(bugs))
         leaders: dict[int, str] = {}
@@ -37,7 +39,9 @@ async def scenario(world: detloop.World, bugs: tuple[str, ...]) -> None:
         def on_leader(node: str, term: int) -> None:
             first = leaders.setdefault(term, node)
             world.note("leader", node=node, term=term)
-            world.check(first == node, "election-safety", f"term {term} has two leaders: {first} and {node}")
+            world.check(
+                first == node, "election-safety", f"term {term} has two leaders: {first} and {node}"
+            )
 
         observer = Observer(on_leader=on_leader)
 
@@ -82,7 +86,13 @@ async def scenario(world: detloop.World, bugs: tuple[str, ...]) -> None:
 
 FAULTS = "partitions,crashes"
 #: Faults are injected while clients are active (the network is healed afterwards).
-SIM = {"nodes": 3, "faults": FAULTS, "window_start": 0.2, "window_end": DURATION, "max_faults": 4}
+SIM: dict[str, Any] = {
+    "nodes": 3,
+    "faults": FAULTS,
+    "window_start": 0.2,
+    "window_end": DURATION,
+    "max_faults": 4,
+}
 
 
 @detloop.simulate(seeds=50, **SIM)

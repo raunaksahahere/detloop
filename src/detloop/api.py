@@ -14,14 +14,17 @@ from __future__ import annotations
 
 import functools
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any, TypeVar, overload
+from typing import Any, overload
 
 from .config import SimConfig, apply_overrides, node_names, parse_faults
 from .errors import ConfigError
 
-F = TypeVar("F", bound=Callable[..., Any])
+#: An ``async def test(world, ...)`` function.
+AsyncTest = Callable[..., Coroutine[Any, Any, Any]]
+#: What ``@simulate`` returns: a synchronous test function for pytest.
+SyncTest = Callable[..., None]
 
 #: Defaults of :func:`simulate` (documented in docs/API.md).
 DEFAULT_SEEDS = 100
@@ -60,7 +63,7 @@ def build_config(nodes: Any = DEFAULT_NODES, faults: Any = None, **overrides: An
 
 
 @overload
-def simulate(fn: F) -> F: ...
+def simulate(fn: AsyncTest) -> SyncTest: ...
 
 
 @overload
@@ -73,7 +76,7 @@ def simulate(
     faults: str | list[str] | tuple[str, ...] | None = ...,
     scheduler: str = ...,
     **config: Any,
-) -> Callable[[F], F]: ...
+) -> Callable[[AsyncTest], SyncTest]: ...
 
 
 def simulate(

@@ -101,7 +101,9 @@ class Operation:
             "status": self.status,
             "output": None if self.output is UNKNOWN else jsonable(self.output),
             "invoke": [self.invoke_index, self.invoke_time],
-            "complete": None if self.complete_index is None else [self.complete_index, self.complete_time],
+            "complete": None
+            if self.complete_index is None
+            else [self.complete_index, self.complete_time],
             "error": self.error,
         }
 
@@ -135,7 +137,13 @@ class History:
         self.ops.append(op)
         if self._world is not None:
             self._world.trace.emit(
-                "invoke", 1, op=op.id, client=op.client, f=f, key=key, value=value,
+                "invoke",
+                1,
+                op=op.id,
+                client=op.client,
+                f=f,
+                key=key,
+                value=value,
                 node=self._world.current_node().name,
             )
         return op
@@ -148,15 +156,26 @@ class History:
         op.output = output
         op.complete_index = idx
         op.complete_time = t
-        op.error = None if error is None else (error if isinstance(error, str) else f"{type(error).__name__}: {error}")
+        op.error = (
+            None
+            if error is None
+            else (error if isinstance(error, str) else f"{type(error).__name__}: {error}")
+        )
         if self._world is not None:
             self._world.trace.emit(
-                "complete", 1, op=op.id, client=op.client, status=status,
-                output=None if output is UNKNOWN else output, error=op.error,
+                "complete",
+                1,
+                op=op.id,
+                client=op.client,
+                status=status,
+                output=None if output is UNKNOWN else output,
+                error=op.error,
             )
 
     @asynccontextmanager
-    async def op(self, client: str, f: str, key: Any = None, value: Any = None) -> AsyncIterator[Operation]:
+    async def op(
+        self, client: str, f: str, key: Any = None, value: Any = None
+    ) -> AsyncIterator[Operation]:
         """Record an operation around a block. If the block raises before
         completing the operation it is recorded as ``info`` (indeterminate)."""
         o = self.invoke(client, f, key, value)

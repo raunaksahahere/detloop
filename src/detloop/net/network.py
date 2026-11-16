@@ -107,7 +107,14 @@ class Network:
         return self.hosts.get(str(name))
 
     def getaddrinfo(
-        self, host: Any, port: Any, *, family: int = 0, type: int = 0, proto: int = 0, flags: int = 0
+        self,
+        host: Any,
+        port: Any,
+        *,
+        family: int = 0,
+        type: int = 0,
+        proto: int = 0,
+        flags: int = 0,
     ) -> list[Any]:
         if port is None:
             p = 0
@@ -210,7 +217,13 @@ class Network:
         if self.trace.level >= level:
             peer = ep.peer.node.name if ep.peer is not None else None
             self.trace.emit(
-                kind, level, conn=ep.conn.cid, side=ep.side, node=self._incname(ep), peer=peer, **extra
+                kind,
+                level,
+                conn=ep.conn.cid,
+                side=ep.side,
+                node=self._incname(ep),
+                peer=peer,
+                **extra,
             )
 
     @staticmethod
@@ -240,7 +253,9 @@ class Network:
         if ssl is not None:
             raise UnsupportedOperation("TLS servers are not simulated (ssl=...)")
         if sock is not None:
-            raise UnsupportedOperation("create_server(sock=...) is not simulated; pass host and port")
+            raise UnsupportedOperation(
+                "create_server(sock=...) is not simulated; pass host and port"
+            )
         inc = self.current_owner()
         node = self.node_of(inc)
         if host in (None, "", "0.0.0.0", "::"):  # noqa: S104 - simulated wildcard bind
@@ -253,7 +268,8 @@ class Network:
                 if ip not in (node.address, LOOPBACK):
                     raise OSError(
                         errno.EADDRNOTAVAIL,
-                        f"Cannot assign requested address {h!r} on simulated node {node.name} ({node.address})",
+                        f"Cannot assign requested address {h!r} on simulated node "
+                        f"{node.name} ({node.address})",
                     )
                 if ip not in ips:
                     ips.append(ip)
@@ -287,7 +303,8 @@ class Network:
                 del self.listeners[key]
         if server._addresses:
             self.trace.emit(
-                "unlisten", 1,
+                "unlisten",
+                1,
                 node=server._node.name if server._inc is None else server._inc.label,
                 port=server._addresses[0][1],
             )
@@ -321,9 +338,13 @@ class Network:
             if host is not None or port is not None:
                 raise ValueError("host/port and sock can not be specified at the same time")
             if not isinstance(sock, SimSocket):
-                raise UnsupportedOperation("create_connection(sock=...) requires a simulated socket")
+                raise UnsupportedOperation(
+                    "create_connection(sock=...) requires a simulated socket"
+                )
             if sock._ep is None:
-                raise OSError(errno.ENOTCONN, "simulated socket is not connected (use loop.sock_connect)")
+                raise OSError(
+                    errno.ENOTCONN, "simulated socket is not connected (use loop.sock_connect)"
+                )
             sock._attached = True
             ep = sock._ep
         else:
@@ -378,15 +399,21 @@ class Network:
             self._eph_client[src.name] = 49152 if lport >= 65535 else lport + 1
         self._cid += 1
         conn = Connection(self, f"c{self._cid}")
-        client = Endpoint(conn, "client", src, inc, contextvars.copy_context(), (src_ip, lport), (ip, port))
+        client = Endpoint(
+            conn, "client", src, inc, contextvars.copy_context(), (src_ip, lport), (ip, port)
+        )
         conn.client = client
         fut: asyncio.Future[bool] = loop.create_future()
         conn.connect_waiter = fut
         self.connections[conn.cid] = conn
         self.world._registry(inc).endpoints[client.name] = client
         self.trace.emit(
-            "connect", 1, conn=conn.cid, node=self._incname(client),
-            dst=dst.name if dst is not None else ip, port=port,
+            "connect",
+            1,
+            conn=conn.cid,
+            node=self._incname(client),
+            dst=dst.name if dst is not None else ip,
+            port=port,
         )
         deadline = loop.now_ns + round(self.config.connect_timeout * NS)
         interval = NS
@@ -446,7 +473,9 @@ class Network:
             self.trace.emit("refused", 1, conn=conn.cid, node=dst.name, port=port)
             self._send_ctrl(dst, client, "refuse")
             return
-        sep = Endpoint(conn, "server", dst, server._inc, server._ctx.copy(), (target_ip, port), client.local)
+        sep = Endpoint(
+            conn, "server", dst, server._inc, server._ctx.copy(), (target_ip, port), client.local
+        )
         conn.server = sep
         sep.peer = client
         client.peer = sep
@@ -459,13 +488,15 @@ class Network:
 
     def _send_synack(self, conn: Connection) -> None:
         client, sep = conn.client, conn.server
-        assert client is not None and sep is not None
+        assert client is not None
+        assert sep is not None
         t = self.loop.now_ns + self.latency_ns(sep.node, client.node)
         self._at(t, client.ctx, self._synack_arrive, conn)
 
     def _synack_arrive(self, conn: Connection) -> None:
         client, sep = conn.client, conn.server
-        assert client is not None and sep is not None
+        assert client is not None
+        assert sep is not None
         if not self.link_up(sep.node, client.node):
             return
         if client.abandoned or client.state != "open":
@@ -651,7 +682,9 @@ class Network:
             d.stalled_since = head.arrival
             self.trace_conn("stall", d.src, 1, reason="unacknowledged")
         if now - d.stalled_since >= self._retx_timeout:
-            exc = TimeoutError(errno.ETIMEDOUT, "Connection timed out (simulated: retransmission timeout)")
+            exc = TimeoutError(
+                errno.ETIMEDOUT, "Connection timed out (simulated: retransmission timeout)"
+            )
             self.trace_conn("timeout", d.src)
             self.abort_endpoint(d.src, None, send_rst=False, local_exc=exc)
             return
@@ -731,7 +764,11 @@ class Network:
                 ep.out.reset()
             ep.rbuf.clear()
             ep.rbuf_bytes = 0
-            if self.config.crash_mode == "process" and ep.peer is not None and ep.peer.state != "dead":
+            if (
+                self.config.crash_mode == "process"
+                and ep.peer is not None
+                and ep.peer.state != "dead"
+            ):
                 self._send_rst(ep.node, ep.peer)
             self._maybe_forget(ep.conn)
         for server in reg.listeners:
@@ -770,14 +807,24 @@ class Network:
         if self.msg_ports.get(key) is ep:
             del self.msg_ports[key]
 
-    def message_send(self, src_ep: MessageEndpoint, dst_ref: Any, port: int, payload: bytes) -> None:
+    def message_send(
+        self, src_ep: MessageEndpoint, dst_ref: Any, port: int, payload: bytes
+    ) -> None:
         src = src_ep.node
         dst = self.node_by_ref(dst_ref)
         self._msg_id += 1
         mid = self._msg_id
         self.stats["messages"] += 1
         sender = src.name if src_ep._inc is None else src_ep._inc.label
-        self.trace.emit("msg_send", 1, msg=mid, node=sender, dst=getattr(dst, "name", str(dst_ref)), port=port, bytes=len(payload))
+        self.trace.emit(
+            "msg_send",
+            1,
+            msg=mid,
+            node=sender,
+            dst=getattr(dst, "name", str(dst_ref)),
+            port=port,
+            bytes=len(payload),
+        )
         if dst is None:
             self.trace.emit("msg_drop", 1, msg=mid, reason="unknown host")
             return
@@ -796,7 +843,16 @@ class Network:
                 self.trace.emit("msg_drop", 1, msg=mid, reason="node down")
                 continue
             inc = dst.incarnation
-            self._at(self.loop.now_ns + lat, self._ctx_for(inc), self._msg_arrive, mid, src, dst, port, payload)
+            self._at(
+                self.loop.now_ns + lat,
+                self._ctx_for(inc),
+                self._msg_arrive,
+                mid,
+                src,
+                dst,
+                port,
+                payload,
+            )
 
     def _msg_arrive(self, mid: int, src: Node, dst: Node, port: int, payload: bytes) -> None:
         if not self.link_up(src, dst):
@@ -804,6 +860,8 @@ class Network:
             return
         ep = self.msg_ports.get((dst.name, port))
         if ep is None or not ep._deliver(src.name, payload, self.config.msg_queue_limit):
-            self.trace.emit("msg_drop", 1, msg=mid, reason="no receiver" if ep is None else "queue full")
+            self.trace.emit(
+                "msg_drop", 1, msg=mid, reason="no receiver" if ep is None else "queue full"
+            )
             return
         self.trace.emit("msg_deliver", 1, msg=mid, node=dst.name)

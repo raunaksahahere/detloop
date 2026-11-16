@@ -76,7 +76,8 @@ class RegisterModel(Model):
         self.initial = initial
 
     def init(self) -> Hashable:
-        return self.initial
+        initial: Hashable = self.initial
+        return initial
 
     def is_readonly(self, op: Operation) -> bool:
         return op.f in ("read", "get")
@@ -171,7 +172,9 @@ class _Entry:
 
 
 def _lift(e: _Entry) -> None:
-    assert e.prev is not None and e.next is not None and e.match is not None
+    assert e.prev is not None
+    assert e.next is not None
+    assert e.match is not None
     e.prev.next = e.next
     e.next.prev = e.prev
     m = e.match
@@ -183,7 +186,10 @@ def _lift(e: _Entry) -> None:
 
 def _unlift(e: _Entry) -> None:
     m = e.match
-    assert m is not None and m.prev is not None and e.prev is not None and e.next is not None
+    assert m is not None
+    assert m.prev is not None
+    assert e.prev is not None
+    assert e.next is not None
     m.prev.next = m
     if m.next is not None:
         m.next.prev = m
@@ -236,7 +242,11 @@ def _check_partition(
         steps += 1
         if steps > max_steps or len(cache) > max_cache:
             return PartitionResult(
-                key, "unknown", len(ops), steps, len(cache),
+                key,
+                "unknown",
+                len(ops),
+                steps,
+                len(cache),
                 f"search budget exhausted (max_steps={max_steps}, max_cache={max_cache})",
                 [ops[i].id for i in best],
             )
@@ -259,8 +269,13 @@ def _check_partition(
             if not stack:
                 blocking = [entry.opid]
                 return PartitionResult(
-                    key, "invalid", len(ops), steps, len(cache),
-                    "no valid linearization exists", [ops[i].id for i in best],
+                    key,
+                    "invalid",
+                    len(ops),
+                    steps,
+                    len(cache),
+                    "no valid linearization exists",
+                    [ops[i].id for i in best],
                     [ops[i].id for i in blocking],
                 )
             if len(stack) >= len(best):
@@ -291,18 +306,24 @@ def check_linearizable(
     """Check a history; returns ``valid``, ``invalid`` or ``unknown``."""
     ops_all = list(history.ops if isinstance(history, History) else history)
     ops = [
-        o for o in ops_all
-        if o.status != "fail" and not (o.output is UNKNOWN and o.status != "ok" and model.is_readonly(o))
+        o
+        for o in ops_all
+        if o.status != "fail"
+        and not (o.output is UNKNOWN and o.status != "ok" and model.is_readonly(o))
     ]
     parts = model.partition(ops) or [(None, ops)]
     results = [_check_partition(model, key, list(p), max_steps, max_cache) for key, p in parts]
     if any(r.status == "invalid" for r in results):
         bad = [r for r in results if r.status == "invalid"]
-        keys = ", ".join(repr(r.key) for r in bad) if parts[0][0] is not None or len(parts) > 1 else ""
+        keys = (
+            ", ".join(repr(r.key) for r in bad) if parts[0][0] is not None or len(parts) > 1 else ""
+        )
         reason = f"not linearizable{' for key(s) ' + keys if keys else ''}"
         return CheckResult("invalid", model.name, reason, results)
     if any(r.status == "unknown" for r in results):
-        return CheckResult("unknown", model.name, "checker budget exhausted for some partitions", results)
+        return CheckResult(
+            "unknown", model.name, "checker budget exhausted for some partitions", results
+        )
     return CheckResult("valid", model.name, f"linearizable ({len(ops)} operations)", results)
 
 
@@ -318,8 +339,14 @@ def assert_linearizable(
     result = check_linearizable(history, model, max_steps=max_steps, max_cache=max_cache)
     world = history._world if isinstance(history, History) else None
     if world is not None:
-        world.trace.emit("check", 1, checker="linearizability", status=result.status, reason=result.reason,
-                         partitions=[p.to_json() for p in result.partitions if p.status != "valid"])
+        world.trace.emit(
+            "check",
+            1,
+            checker="linearizability",
+            status=result.status,
+            reason=result.reason,
+            partitions=[p.to_json() for p in result.partitions if p.status != "valid"],
+        )
     if result.status == "invalid":
         ops = history.ops if isinstance(history, History) else list(history)
         detail = []
@@ -328,7 +355,9 @@ def assert_linearizable(
                 by_id = {o.id: o for o in ops}
                 culprit = ", ".join(str(by_id[i]) for i in p.unlinearizable if i in by_id)
                 detail.append(f"key {p.key!r}: cannot linearize {culprit}")
-        raise LinearizabilityViolation(result.reason + ("; " + "; ".join(detail) if detail else ""), result)
+        raise LinearizabilityViolation(
+            result.reason + ("; " + "; ".join(detail) if detail else ""), result
+        )
     if result.status == "unknown":
         raise CheckIncomplete(result.reason, result)
     return result

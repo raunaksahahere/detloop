@@ -25,11 +25,27 @@ def spec_of(fn: object) -> detloop.Spec:
     return spec
 
 
-def hashes_in_subprocess(target: str, seeds: int, hash_seed: str, config: detloop.SimConfig) -> dict[int, str]:
+def hashes_in_subprocess(
+    target: str, seeds: int, hash_seed: str, config: detloop.SimConfig
+) -> dict[int, str]:
     env = dict(os.environ, PYTHONHASHSEED=hash_seed)
     proc = subprocess.run(
-        [sys.executable, "-m", "detloop", "hashes", target, "--seeds", str(seeds), "--config", json.dumps(config.to_dict())],
-        cwd=ROOT, env=env, capture_output=True, text=True, check=True,
+        [
+            sys.executable,
+            "-m",
+            "detloop",
+            "hashes",
+            target,
+            "--seeds",
+            str(seeds),
+            "--config",
+            json.dumps(config.to_dict()),
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return {int(k): v for k, v in json.loads(proc.stdout).items()}
 
@@ -42,7 +58,10 @@ def test_same_seed_same_trace_in_process() -> None:
     assert len(set(a)) == 5
 
 
-@pytest.mark.parametrize("target", ["tests/sim_targets.py::test_portable_fixture", "detloop.examples.kv_sim::test_kv_correct"])
+@pytest.mark.parametrize(
+    "target",
+    ["tests/sim_targets.py::test_portable_fixture", "detloop.examples.kv_sim::test_kv_correct"],
+)
 def test_fresh_processes_with_different_hash_seeds_agree(target: str) -> None:
     from detloop import targets
 
@@ -55,7 +74,10 @@ def test_fresh_processes_with_different_hash_seeds_agree(target: str) -> None:
 
 def test_trace_level_does_not_change_execution() -> None:
     spec = spec_of(sim_targets.test_portable_fixture)
-    runs = {lvl: detloop.run(spec.fn, seed=3, config=spec.config, trace_level=lvl) for lvl in ("off", "basic", "full")}
+    runs = {
+        lvl: detloop.run(spec.fn, seed=3, config=spec.config, trace_level=lvl)
+        for lvl in ("off", "basic", "full")
+    }
     assert len({(r.steps, r.virtual_ns, r.decisions, r.signature) for r in runs.values()}) == 1
     assert runs["full"].trace_events > runs["basic"].trace_events > runs["off"].trace_events
 
@@ -78,7 +100,9 @@ def test_strict_tape_replay_reproduces_and_detects_divergence() -> None:
         world.start(incr)
         await asyncio.sleep(1)
 
-    diverged = detloop.run(different, seed=7, config=spec.config, tapes=tapes, decision_mode="strict")
+    diverged = detloop.run(
+        different, seed=7, config=spec.config, tapes=tapes, decision_mode="strict"
+    )
     assert (diverged.status, diverged.kind) == ("error", "replay_divergence")
     with pytest.raises(ReplayDivergence):
         tapes["sched"].values.append(0)

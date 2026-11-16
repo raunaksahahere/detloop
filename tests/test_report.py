@@ -41,7 +41,12 @@ def test_adversarial_trace_strings_cannot_execute(tmp_path: Path) -> None:
     out = tmp_path / "r.html"
     render_report(str(trace), str(out))
     html = out.read_text()
-    outside = re.sub(r'(<script type="application/json" id="detloop-data">).*?(</script>)', r"\1\2", html, flags=re.S)
+    outside = re.sub(
+        r'(<script type="application/json" id="detloop-data">).*?(</script>)',
+        r"\1\2",
+        html,
+        flags=re.S,
+    )
     assert "<script>alert" not in html
     assert "alert(" not in outside and "onerror" not in outside
     csp, scripts, styles = _csp_and_inline(html)
@@ -51,14 +56,18 @@ def test_adversarial_trace_strings_cannot_execute(tmp_path: Path) -> None:
         assert f"{kind} 'sha256-{digest}'" in csp
     assert "default-src 'none'" in csp
     # the data element contains the payload only in escaped form
-    data = re.search(r'<script type="application/json" id="detloop-data">(.*?)</script>', html, re.S)
+    data = re.search(
+        r'<script type="application/json" id="detloop-data">(.*?)</script>', html, re.S
+    )
     assert data and EVIL in json.loads(data.group(1))["events"][1]["note"]
 
 
 def test_report_has_no_external_resources() -> None:
     html = build_html({"kind": "run", "events": [], "manifest": {}}, "t")
     assert not re.search(r"(src|href)=\"?(https?:)?//", html)
-    assert "http://" not in html.replace("http://www.w3.org/2000/svg", "") and "https://" not in html
+    assert (
+        "http://" not in html.replace("http://www.w3.org/2000/svg", "") and "https://" not in html
+    )
     assert "innerHTML" not in html and "eval(" not in html
 
 
@@ -69,7 +78,12 @@ def test_report_from_manifest_contains_replay_and_timeline(tmp_path: Path) -> No
 
     spec = detloop.get_spec(kv_sim.test_kv_stale_read)
     assert spec is not None
-    r = explore(spec, [1], target=Target("detloop.examples.kv_sim", "test_kv_stale_read"), artifacts_dir=str(tmp_path))
+    r = explore(
+        spec,
+        [1],
+        target=Target("detloop.examples.kv_sim", "test_kv_stale_read"),
+        artifacts_dir=str(tmp_path),
+    )
     out = tmp_path / "r.html"
     render_report(r.artifacts[1], str(out))
     html = out.read_text()

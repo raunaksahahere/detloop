@@ -147,7 +147,8 @@ class SimConfig:
 
     # -- canonical form -------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
-        return _to_jsonable(dataclasses.asdict(self))
+        out: dict[str, Any] = _to_jsonable(dataclasses.asdict(self))
+        return out
 
     def semantic_dict(self) -> dict[str, Any]:
         d = self.to_dict()
@@ -232,7 +233,12 @@ def apply_overrides(cfg: SimConfig, overrides: dict[str, Any]) -> SimConfig:
             field_owner.setdefault(f.name, sec)
     top_names = {f.name for f in fields(SimConfig)}
     for key, value in overrides.items():
-        if value is None and key not in ("bandwidth", "network.bandwidth", "wall_timeout", "budgets.wall_timeout"):
+        if value is None and key not in (
+            "bandwidth",
+            "network.bandwidth",
+            "wall_timeout",
+            "budgets.wall_timeout",
+        ):
             continue
         if "." in key:
             sec, name = key.split(".", 1)

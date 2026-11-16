@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Iterator
 from typing import Any
@@ -34,7 +35,9 @@ def sanitize_text(text: str) -> str:
 
 
 def canonical_json(obj: Any) -> str:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    return json.dumps(
+        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+    )
 
 
 def jsonable(value: Any, depth: int = 0) -> Any:
@@ -42,7 +45,7 @@ def jsonable(value: Any, depth: int = 0) -> Any:
     if value is None or isinstance(value, bool | int | str):
         return sanitize_text(value) if isinstance(value, str) else value
     if isinstance(value, float):
-        if value != value or value in (float("inf"), float("-inf")):
+        if math.isnan(value) or math.isinf(value):
             return repr(value)
         return value
     if depth > 6:
@@ -52,7 +55,10 @@ def jsonable(value: Any, depth: int = 0) -> Any:
     if isinstance(value, list | tuple):
         return [jsonable(v, depth + 1) for v in value]
     if isinstance(value, dict):
-        return {str(k): jsonable(v, depth + 1) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
+        return {
+            str(k): jsonable(v, depth + 1)
+            for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))
+        }
     if isinstance(value, set | frozenset):
         items = [jsonable(v, depth + 1) for v in value]
         return sorted(items, key=canonical_json)
@@ -134,8 +140,8 @@ class Trace:
 def read_trace(path: str) -> list[dict[str, Any]]:
     out = []
     with open(path, encoding="ascii") as fh:
-        for n, line in enumerate(fh, 1):
-            line = line.strip()
+        for n, raw in enumerate(fh, 1):
+            line = raw.strip()
             if not line:
                 continue
             try:

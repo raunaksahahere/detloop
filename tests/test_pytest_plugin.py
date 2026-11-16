@@ -13,7 +13,8 @@ pytest_plugins = ["pytester"]
 def _ini(pytester: pytest.Pytester) -> None:
     pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function\n")
 
-TESTS = '''
+
+TESTS = """
 import asyncio
 import pytest
 import detloop
@@ -43,18 +44,20 @@ def factor():
 async def test_param_and_fixture(world, n, factor):
     await asyncio.sleep(n * factor)
     assert world.time() == n * factor
-'''
+"""
 
 
 def test_discovery_parametrize_fixtures_and_failure_report(pytester: pytest.Pytester) -> None:
     pytester.makepyfile(test_sim=TESTS)
     result = pytester.runpytest("-q")
     result.assert_outcomes(passed=3, failed=1)
-    result.stdout.fnmatch_lines([
-        "*detloop: seed * fail (assertion:*) after * of 40 seed(s)*",
-        "*replay:   pytest test_sim.py::test_racy --detloop-seed=*",
-        "*detloop replay*manifest.json*",
-    ])
+    result.stdout.fnmatch_lines(
+        [
+            "*detloop: seed * fail (assertion:*) after * of 40 seed(s)*",
+            "*replay:   pytest test_sim.py::test_racy --detloop-seed=*",
+            "*detloop replay*manifest.json*",
+        ]
+    )
 
 
 def test_single_seed_option_and_replay_manifest(pytester: pytest.Pytester) -> None:
@@ -68,12 +71,12 @@ def test_single_seed_option_and_replay_manifest(pytester: pytest.Pytester) -> No
     again = pytester.runpytest("-q", "test_sim.py::test_racy", f"--detloop-seed={seed}")
     again.assert_outcomes(failed=1)
     again.stdout.fnmatch_lines([f"*seed {seed} fail*after 1 of 1 seed(s)*"])
-    replay = pytester.runpytest("-q", "test_sim.py::test_racy",
-                                f"--detloop-replay={manifest}")
+    replay = pytester.runpytest("-q", "test_sim.py::test_racy", f"--detloop-replay={manifest}")
     replay.assert_outcomes(failed=1)
     replay.stdout.fnmatch_lines(["*REPRODUCED*"])
-    passing_seed = pytester.runpytest("-q", "test_sim.py::test_passes",
-                                      "--detloop-seeds=2", "--detloop-seed-start=100")
+    passing_seed = pytester.runpytest(
+        "-q", "test_sim.py::test_passes", "--detloop-seeds=2", "--detloop-seed-start=100"
+    )
     passing_seed.assert_outcomes(passed=1)
 
 
@@ -81,7 +84,9 @@ def test_shrink_option_writes_minimized_manifest(pytester: pytest.Pytester) -> N
     pytester.makepyfile(test_sim=TESTS)
     result = pytester.runpytest("-q", "test_sim.py::test_racy", "--detloop-shrink")
     result.assert_outcomes(failed=1)
-    result.stdout.fnmatch_lines(["*shrunk (*", "*shrunk manifest:*-shrunk*manifest.json*", "*--detloop-replay=*"])
+    result.stdout.fnmatch_lines(
+        ["*shrunk (*", "*shrunk manifest:*-shrunk*manifest.json*", "*--detloop-replay=*"]
+    )
 
 
 def test_report_header_and_options_registered(pytester: pytest.Pytester) -> None:
@@ -92,13 +97,20 @@ def test_report_header_and_options_registered(pytester: pytest.Pytester) -> None
     result.stdout.fnmatch_lines(["detloop: *"])
 
 
-@pytest.mark.skipif(importlib.util.find_spec("pytest_asyncio") is None, reason="pytest-asyncio not installed")
+@pytest.mark.skipif(
+    importlib.util.find_spec("pytest_asyncio") is None, reason="pytest-asyncio not installed"
+)
 def test_coexists_with_pytest_asyncio_auto_mode(pytester: pytest.Pytester) -> None:
-    pytester.makeini("[pytest]\nasyncio_mode = auto\nasyncio_default_fixture_loop_scope = function\n")
-    pytester.makepyfile(test_sim=TESTS + '''
+    pytester.makeini(
+        "[pytest]\nasyncio_mode = auto\nasyncio_default_fixture_loop_scope = function\n"
+    )
+    pytester.makepyfile(
+        test_sim=TESTS
+        + """
 
 async def test_plain_async_test():
     await asyncio.sleep(0)
-''')
+"""
+    )
     result = pytester.runpytest("-p", "asyncio", "-q", "-k", "passes or plain or param")
     result.assert_outcomes(passed=4)

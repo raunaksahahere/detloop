@@ -18,22 +18,53 @@ from ._version import __version__
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("detloop", "deterministic simulation testing")
-    group.addoption("--detloop-seed", type=int, default=None, metavar="N",
-                    help="run only seed N of every @detloop.simulate test")
-    group.addoption("--detloop-seeds", type=int, default=None, metavar="N",
-                    help="override the number of seeds per test")
-    group.addoption("--detloop-seed-start", type=int, default=None, metavar="N",
-                    help="override the first seed")
-    group.addoption("--detloop-replay", default=None, metavar="MANIFEST",
-                    help="replay a saved (possibly shrunk) failure manifest")
-    group.addoption("--detloop-artifacts", default=None, metavar="DIR",
-                    help="directory for failure traces/manifests (default .detloop/artifacts)")
-    group.addoption("--detloop-no-artifacts", action="store_true", default=False,
-                    help="do not write failure artifacts")
-    group.addoption("--detloop-shrink", action="store_true", default=False,
-                    help="shrink failures and save a minimized replay manifest")
-    group.addoption("--detloop-trace", default=None, choices=["off", "basic", "full"],
-                    help="override the trace level")
+    group.addoption(
+        "--detloop-seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="run only seed N of every @detloop.simulate test",
+    )
+    group.addoption(
+        "--detloop-seeds",
+        type=int,
+        default=None,
+        metavar="N",
+        help="override the number of seeds per test",
+    )
+    group.addoption(
+        "--detloop-seed-start", type=int, default=None, metavar="N", help="override the first seed"
+    )
+    group.addoption(
+        "--detloop-replay",
+        default=None,
+        metavar="MANIFEST",
+        help="replay a saved (possibly shrunk) failure manifest",
+    )
+    group.addoption(
+        "--detloop-artifacts",
+        default=None,
+        metavar="DIR",
+        help="directory for failure traces/manifests (default .detloop/artifacts)",
+    )
+    group.addoption(
+        "--detloop-no-artifacts",
+        action="store_true",
+        default=False,
+        help="do not write failure artifacts",
+    )
+    group.addoption(
+        "--detloop-shrink",
+        action="store_true",
+        default=False,
+        help="shrink failures and save a minimized replay manifest",
+    )
+    group.addoption(
+        "--detloop-trace",
+        default=None,
+        choices=["off", "basic", "full"],
+        help="override the trace level",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -47,7 +78,9 @@ def pytest_configure(config: pytest.Config) -> None:
     if config.getoption("--detloop-no-artifacts"):
         opts.artifacts = None
     else:
-        opts.artifacts = config.getoption("--detloop-artifacts") or str(config.rootpath / ".detloop" / "artifacts")
+        opts.artifacts = config.getoption("--detloop-artifacts") or str(
+            config.rootpath / ".detloop" / "artifacts"
+        )
     opts.rootdir = str(config.rootpath)
 
 

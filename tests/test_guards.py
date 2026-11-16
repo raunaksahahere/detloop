@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import random
 import socket
@@ -21,9 +22,13 @@ from .conftest import expect_pass, run_sim
 
 def _snapshot() -> dict[str, object]:
     return {
-        "time.time": time.time, "time.monotonic": time.monotonic, "time.sleep": time.sleep,
-        "os.urandom": os.urandom, "socket.socket": socket.socket,
-        "socket.getaddrinfo": socket.getaddrinfo, "Thread.start": threading.Thread.start,
+        "time.time": time.time,
+        "time.monotonic": time.monotonic,
+        "time.sleep": time.sleep,
+        "os.urandom": os.urandom,
+        "socket.socket": socket.socket,
+        "socket.getaddrinfo": socket.getaddrinfo,
+        "Thread.start": threading.Thread.start,
         "Popen.__init__": subprocess.Popen.__init__,
     }
 
@@ -47,7 +52,7 @@ def test_time_is_virtual_inside_and_real_outside() -> None:
     [
         (lambda: time.sleep(0.01), "nondeterminism"),
         (lambda: os.urandom(4), "nondeterminism"),
-        (lambda: uuid.uuid4(), "nondeterminism"),
+        (uuid.uuid4, "nondeterminism"),
         (lambda: random.SystemRandom().random(), "nondeterminism"),
         (lambda: threading.Thread(target=lambda: None).start(), "nondeterminism"),
         (lambda: subprocess.run(["true"], check=False), "nondeterminism"),
@@ -58,10 +63,8 @@ def test_time_is_virtual_inside_and_real_outside() -> None:
 )
 def test_blocked_apis_fail_loudly_even_if_swallowed(snippet: object, kind: str) -> None:
     async def body(world: detloop.World) -> None:
-        try:
+        with contextlib.suppress(Exception):  # sticky: the run still fails
             snippet()  # type: ignore[operator]
-        except Exception:
-            pass  # sticky: still fails
         await asyncio.sleep(0.1)
 
     before = _snapshot()

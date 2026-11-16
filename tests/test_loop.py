@@ -180,10 +180,17 @@ def test_asyncio_primitives_supported_subset() -> None:
                     raise ValueError("x")
 
                 tg.create_task(boom())
-        out["gather"] = await asyncio.gather(asyncio.sleep(1, 1), asyncio.sleep(0, 2), return_exceptions=True)
+        out["gather"] = await asyncio.gather(
+            asyncio.sleep(1, 1), asyncio.sleep(0, 2), return_exceptions=True
+        )
         inner = asyncio.ensure_future(asyncio.sleep(1, "shielded"))
         out["shield"] = await asyncio.shield(inner)
-        lock, sem, cond, ev = asyncio.Lock(), asyncio.Semaphore(2), asyncio.Condition(), asyncio.Event()
+        lock, sem, cond, ev = (
+            asyncio.Lock(),
+            asyncio.Semaphore(2),
+            asyncio.Condition(),
+            asyncio.Event(),
+        )
         seen: list[int] = []
 
         async def user(i: int) -> None:
