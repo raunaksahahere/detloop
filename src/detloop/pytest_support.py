@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
-import shlex
 from dataclasses import dataclass
 from typing import Any
 
+from ._shell import quote
 from .api import Spec
 from .artifacts import read_manifest
 from .errors import SimulationFailure
@@ -46,9 +46,9 @@ def _target_for(spec: Spec) -> Target | None:
 def _replay_command(spec: Spec, seed: int) -> str:
     nodeid = options.nodeid
     if nodeid:
-        return f"pytest {shlex.quote(nodeid)} --detloop-seed={seed}"
+        return f"pytest {quote(nodeid)} --detloop-seed={seed}"
     t = _target_for(spec)
-    return f"pytest {shlex.quote(str(t))} --detloop-seed={seed}" if t else f"--detloop-seed={seed}"
+    return f"pytest {quote(str(t))} --detloop-seed={seed}" if t else f"--detloop-seed={seed}"
 
 
 def _format_failure(
@@ -67,8 +67,8 @@ def _format_failure(
         lines.append(f"  trace:    {os.path.join(os.path.dirname(manifest), 'trace.jsonl')}")
     lines.append(f"  replay:   {_replay_command(spec, res.seed)}")
     if manifest:
-        lines.append(f"            detloop replay {shlex.quote(manifest)}")
-        lines.append(f"  report:   detloop report {shlex.quote(manifest)} -o detloop-report.html")
+        lines.append(f"            detloop replay {quote(manifest)}")
+        lines.append(f"  report:   detloop report {quote(manifest)} -o detloop-report.html")
     if extra:
         lines.append(extra)
     if res.traceback:
@@ -131,8 +131,8 @@ def _shrink_in_pytest(spec: Spec, res: RunResult, cfg: Any, target: Target | Non
         f"non-zero decisions {m['nonzero_decisions'][0]}->{m['nonzero_decisions'][1]}, "
         f"steps {m['steps'][0]}->{m['steps'][1]}\n"
         f"  shrunk manifest: {path}\n"
-        f"  replay shrunk:   pytest {shlex.quote(options.nodeid or '')} "
-        f"--detloop-replay={shlex.quote(path)}"
+        f"  replay shrunk:   pytest {quote(options.nodeid or '')} "
+        f"--detloop-replay={quote(path)}"
     )
 
 

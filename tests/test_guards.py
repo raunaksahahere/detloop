@@ -57,7 +57,7 @@ def test_time_is_virtual_inside_and_real_outside() -> None:
         (lambda: threading.Thread(target=lambda: None).start(), "nondeterminism"),
         (lambda: subprocess.run(["true"], check=False), "nondeterminism"),
         (lambda: socket.create_connection(("n1", 80)), "nondeterminism"),
-        (lambda: socket.socket(socket.AF_UNIX, socket.SOCK_STREAM), "nondeterminism"),
+        (lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM), "nondeterminism"),
         (lambda: socket.socket().connect(("n1", 80)), "nondeterminism"),
     ],
 )

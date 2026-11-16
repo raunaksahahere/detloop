@@ -67,7 +67,7 @@ def test_single_seed_option_and_replay_manifest(pytester: pytest.Pytester) -> No
     first = pytester.runpytest("-q", "test_sim.py::test_racy")
     out = first.stdout.str()
     seed = int(re.search(r"detloop: seed (\d+) fail", out).group(1))  # type: ignore[union-attr]
-    manifest = re.search(r"detloop replay (\S+manifest\.json)", out).group(1)  # type: ignore[union-attr]
+    manifest = re.search(r"detloop replay [\"']?(.+?manifest\.json)", out).group(1)  # type: ignore[union-attr]
     again = pytester.runpytest("-q", "test_sim.py::test_racy", f"--detloop-seed={seed}")
     again.assert_outcomes(failed=1)
     again.stdout.fnmatch_lines([f"*seed {seed} fail*after 1 of 1 seed(s)*"])

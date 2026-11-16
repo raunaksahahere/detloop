@@ -16,10 +16,10 @@ import hashlib
 import html
 import json
 import os
-import shlex
 from importlib import resources
 from typing import Any
 
+from ._shell import quote
 from ._version import __version__
 from .artifacts import atomic_write, load_db, read_manifest
 from .errors import ConfigError
@@ -85,18 +85,17 @@ def _run_data(
         nodes = list(events[0].get("nodes", []))
     replay = []
     if manifest_path:
-        replay.append(f"detloop replay {shlex.quote(manifest_path)}")
+        replay.append(f"detloop replay {quote(manifest_path)}")
     if manifest:
         t = manifest.get("target", {})
         if not manifest.get("decisions") and not manifest.get("faults_explicit"):
             replay.append(
-                f"pytest {shlex.quote(str(t.get('location')) + '::' + str(t.get('test')))} "
+                f"pytest {quote(str(t.get('location')) + '::' + str(t.get('test')))} "
                 f"--detloop-seed={manifest.get('seed')}"
             )
         elif manifest_path:
             replay.append(
-                f"pytest {shlex.quote(str(t.get('location')))} "
-                f"--detloop-replay={shlex.quote(manifest_path)}"
+                f"pytest {quote(str(t.get('location')))} --detloop-replay={quote(manifest_path)}"
             )
     return {
         "kind": "run",

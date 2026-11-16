@@ -35,7 +35,7 @@ def main() -> int:
 
     location = Path(detloop.__file__).resolve()
     print(f"detloop {detloop.__version__} from {location}")
-    if Path.cwd().resolve() in location.parents or "src" in location.parts[-3:-1]:
+    if not ({"site-packages", "dist-packages"} & set(location.parts)):
         raise SystemExit("detloop was imported from a source tree, not an installed package")
     if expected and detloop.__version__ != expected:
         raise SystemExit(f"version {detloop.__version__} != expected {expected}")
