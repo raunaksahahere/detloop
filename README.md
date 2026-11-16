@@ -158,9 +158,10 @@ detloop explore detloop.examples.kv_sim::test_kv_split_brain --seeds 300 --jobs 
 | corrected | — | 0 | — |
 
 Each failure replays with an identical trace and can be shrunk. The same
-workload on real asyncio with random sleeps finds these bugs at similar rates
-per trial but costs ~6.5 s per trial (vs ~0.11 s per simulated seed) and
-cannot replay what it finds; see [benchmarks](docs/BENCHMARKS.md).
+workload on real asyncio with random sleeps found stale reads in 18/20 trials,
+lost acknowledged writes in 3/20 and split brain in 0/20, at ~6.5 s per trial
+(vs ~0.11 s per simulated seed), and cannot replay what it finds; see
+[benchmarks](docs/BENCHMARKS.md).
 
 ## Supported environments
 
@@ -190,7 +191,8 @@ Details: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
   state inside the test function or in `node.disk` / `node.volatile`.
 - **Byte-identical traces across Python versions are not promised.** Different
   asyncio versions schedule different internal callbacks. CI compares trace
-  hashes of declared portable fixtures across jobs; see
+  hashes of a declared portable fixture across jobs (at release it is
+  identical on Linux, macOS and Windows × 3.11–3.14); see
   [docs/DETERMINISM.md](docs/DETERMINISM.md).
 
 ## Documentation

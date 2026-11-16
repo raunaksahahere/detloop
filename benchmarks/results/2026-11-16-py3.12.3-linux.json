@@ -1,9 +1,9 @@
 {
   "machine": {
     "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
-    "date": "2026-11-16T15:04:12+00:00",
+    "date": "2026-11-16T15:52:02+00:00",
     "detloop": "0.1.0",
-    "git_commit": "35cd060",
+    "git_commit": "160132b",
     "implementation": "cpython",
     "logical_cpus": 12,
     "memory_gib": 7.1,
@@ -14,32 +14,32 @@
   "results": {
     "baseline": {
       "lost-ack": {
-        "detected": 6,
-        "detection_rate": 0.3,
+        "detected": 3,
+        "detection_rate": 0.15,
         "errors": 0,
-        "mean_wall_seconds_per_trial": 6.555,
+        "mean_wall_seconds_per_trial": 6.487,
         "trials": 20
       },
       "none": {
         "detected": 0,
         "detection_rate": 0.0,
         "errors": 0,
-        "mean_wall_seconds_per_trial": 6.59,
+        "mean_wall_seconds_per_trial": 6.997,
         "trials": 20
       },
-      "section_seconds": 91.2,
+      "section_seconds": 92.7,
       "split-brain": {
-        "detected": 3,
-        "detection_rate": 0.15,
+        "detected": 0,
+        "detection_rate": 0.0,
         "errors": 0,
-        "mean_wall_seconds_per_trial": 6.644,
+        "mean_wall_seconds_per_trial": 6.62,
         "trials": 20
       },
       "stale-read": {
         "detected": 18,
         "detection_rate": 0.9,
         "errors": 0,
-        "mean_wall_seconds_per_trial": 6.204,
+        "mean_wall_seconds_per_trial": 6.209,
         "trials": 20
       },
       "trials_per_variant": 20,
@@ -65,9 +65,9 @@
         "signatures": {
           "linearizability": 44
         },
-        "wall_seconds": 5.96
+        "wall_seconds": 5.94
       },
-      "section_seconds": 24.7,
+      "section_seconds": 23.6,
       "seeds_per_bug": 300,
       "split-brain": {
         "failing_seeds": 16,
@@ -82,7 +82,7 @@
         "signatures": {
           "invariant:election-safety": 16
         },
-        "wall_seconds": 5.97
+        "wall_seconds": 5.54
       },
       "stale-read": {
         "failing_seeds": 199,
@@ -97,7 +97,7 @@
         "signatures": {
           "linearizability": 199
         },
-        "wall_seconds": 6.45
+        "wall_seconds": 6.49
       }
     },
     "memory": {
@@ -122,7 +122,7 @@
           2760
         ],
         "runs": 151,
-        "seconds": 88.095,
+        "seconds": 84.13,
         "seed": 0,
         "signature": "linearizability",
         "status": "budget_exhausted",
@@ -139,7 +139,7 @@
           6.276481126
         ]
       },
-      "section_seconds": 208.9,
+      "section_seconds": 199.5,
       "split-brain": {
         "decisions": [
           495,
@@ -155,7 +155,7 @@
           401
         ],
         "runs": 151,
-        "seconds": 8.625,
+        "seconds": 8.237,
         "seed": 17,
         "signature": "invariant:election-safety",
         "status": "budget_exhausted",
@@ -187,7 +187,7 @@
           2708
         ],
         "runs": 151,
-        "seconds": 112.199,
+        "seconds": 107.091,
         "seed": 1,
         "signature": "linearizability",
         "status": "budget_exhausted",
@@ -208,82 +208,82 @@
     "throughput": {
       "bulk_transfer_8MiB": {
         "seeds": 3,
-        "seeds_per_second": 19.4,
+        "seeds_per_second": 18.09,
         "steps": 6909,
-        "steps_per_second": 44686,
+        "steps_per_second": 41671,
         "trace_events": 32,
-        "wall_seconds": 0.155
+        "wall_seconds": 0.166
       },
       "kv_parallel": {
         "jobs": 12,
         "seeds": 240,
-        "seeds_per_second": 51.4,
-        "wall_seconds": 4.669
+        "seeds_per_second": 51.13,
+        "wall_seconds": 4.694
       },
       "kv_serial": {
         "seeds": 40,
-        "seeds_per_second": 8.69,
+        "seeds_per_second": 8.7,
         "steps": 237741,
-        "steps_per_second": 51626,
+        "steps_per_second": 51723,
         "trace_events": 61846,
-        "wall_seconds": 4.605
+        "wall_seconds": 4.596
       },
-      "section_seconds": 9.4
+      "section_seconds": 9.5
     },
     "trace": {
       "kv_basic": {
         "seeds": 10,
-        "seeds_per_second": 8.56,
+        "seeds_per_second": 8.62,
         "steps": 60956,
-        "steps_per_second": 52185,
+        "steps_per_second": 52573,
         "trace_events": 16292,
-        "wall_seconds": 1.168
+        "wall_seconds": 1.159
       },
       "kv_full": {
         "seeds": 10,
-        "seeds_per_second": 6.46,
+        "seeds_per_second": 6.51,
         "steps": 60956,
-        "steps_per_second": 39352,
+        "steps_per_second": 39665,
         "trace_events": 42837,
-        "wall_seconds": 1.549
+        "wall_seconds": 1.537
       },
       "kv_off": {
         "seeds": 10,
-        "seeds_per_second": 10.61,
+        "seeds_per_second": 10.54,
         "steps": 60956,
-        "steps_per_second": 64669,
+        "steps_per_second": 64267,
         "trace_events": 10,
-        "wall_seconds": 0.943
+        "wall_seconds": 0.948
       },
-      "kv_overhead_basic_pct": 23.9,
-      "kv_overhead_full_pct": 64.3,
+      "kv_overhead_basic_pct": 22.3,
+      "kv_overhead_full_pct": 62.1,
       "pingpong_basic": {
         "seeds": 10,
-        "seeds_per_second": 16.65,
+        "seeds_per_second": 16.58,
         "steps": 119820,
-        "steps_per_second": 199548,
+        "steps_per_second": 198708,
         "trace_events": 80,
-        "wall_seconds": 0.6
+        "wall_seconds": 0.603
       },
       "pingpong_full": {
         "seeds": 10,
-        "seeds_per_second": 5.31,
+        "seeds_per_second": 5.05,
         "steps": 119820,
-        "steps_per_second": 63660,
+        "steps_per_second": 60517,
         "trace_events": 120534,
-        "wall_seconds": 1.882
+        "wall_seconds": 1.98
       },
       "pingpong_off": {
         "seeds": 10,
-        "seeds_per_second": 17.1,
+        "seeds_per_second": 16.19,
         "steps": 119820,
-        "steps_per_second": 204842,
+        "steps_per_second": 194026,
         "trace_events": 10,
-        "wall_seconds": 0.585
+        "wall_seconds": 0.618
       },
-      "pingpong_overhead_basic_pct": 2.6,
-      "pingpong_overhead_full_pct": 221.7,
-      "section_seconds": 6.7
+      "pingpong_overhead_basic_pct": -2.4,
+      "pingpong_overhead_full_pct": 220.4,
+      "section_seconds": 6.8
     }
   }
 }

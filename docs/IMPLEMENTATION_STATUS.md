@@ -16,7 +16,7 @@ workflow `ci.yml`; results are linked from the release notes.
 | Replay metadata, envelope, divergence detection | `artifacts.build_manifest`, `replay.check_envelope`, strict `Decisions` | `test_strict_tape_replay_reproduces_and_detects_divergence`, `test_replay_rejects_changed_code`, `test_replay_rejects_foreign_manifests` |
 | Canonical JSONL; metadata separated | `trace.py`, manifest `metadata` | `test_canonical_trace_contains_no_host_specific_data` |
 | Identical hashes in fresh processes and different `PYTHONHASHSEED` | | `test_fresh_processes_with_different_hash_seeds_agree` (0, 1, 4242; fixture and KV) |
-| Cross-version/platform equivalence on declared fixtures | `scripts/fixture_hashes.py`, `compare_fixture_hashes.py` | CI `determinism` job; locally byte-identical on 3.11/3.12/3.13 |
+| Cross-version/platform equivalence on declared fixtures | `scripts/fixture_hashes.py`, `compare_fixture_hashes.py` | CI `determinism` job: byte-identical for 20/20 seeds across Linux/macOS/Windows × 3.11–3.14 |
 | Ownership of tasks/timers/callbacks/transports incl. descendants | `_owner.py`, contextvar ownership (ADR 0004) | `test_descendant_tasks_and_callbacks_inherit_ownership` |
 | Block real networking, threads, subprocesses, DNS, entropy, real time; restore patches | `guards.py`, `SimSocket`, loop rejections | `test_guards.py` (all blocked APIs, restoration after failure/interrupt, other threads unaffected, nested rejected) |
 | Supervisory wall-clock timeouts outside virtual time; kill hung workers | `runner._Watchdog`, explorer hard deadline | `test_wall_clock_watchdog_interrupts_cpu_bound_code`, `test_hard_kill_of_cpu_bound_worker` |
@@ -51,7 +51,7 @@ in [BENCHMARKS.md](BENCHMARKS.md).
 
 | # | Gate | Status |
 |---|---|---|
-| 1 | Unit/integration tests with negative controls | Passing locally on 3.11–3.14 (Linux); CI matrix: see release notes |
+| 1 | Unit/integration tests with negative controls | Passing locally on 3.11–3.14 (Linux) and in CI on 3.11–3.14 × Linux/macOS/Windows |
 | 2 | Fresh-process determinism under multiple hash seeds; serial/parallel agreement | Passing (tests) |
 | 3 | Adversarial crash/partition/in-flight/backpressure/cancellation/deadlock tests | Passing |
 | 4 | Planted bugs detected and replayed; corrected baseline passes its budget | Passing (40 seeds in suite; 300 in benchmarks; 1,000 with `DETLOOP_SLOW=1`) |
@@ -59,7 +59,7 @@ in [BENCHMARKS.md](BENCHMARKS.md).
 | 6 | Shrinking preserves signature; replayable artifact | Passing |
 | 7 | aiohttp/httpx integration | Passing (httpx keep-alive limitation documented) |
 | 8 | Wheel and sdist installed outside the tree; CLI, imports, pytest discovery, examples, resources | `scripts/smoke_installed.py` locally and in CI/release |
-| 9 | CI on 3.11–3.14 × Linux/macOS/Windows; cross-job trace comparison | See release notes for run links |
+| 9 | CI on 3.11–3.14 × Linux/macOS/Windows; cross-job trace comparison | Passing (all 16 jobs); fixture identical across all 12 test jobs |
 | 10 | Lint, format, typing, docs, licenses, metadata | Passing (`ruff`, `mypy --strict`, `check_docs.py`, `pip-licenses`, `twine check --strict`) |
 | 11 | Benchmarks with raw results and baseline | [BENCHMARKS.md](BENCHMARKS.md) |
 | 12 | No leaks, junk, secrets or source material in artifacts | Release workflow package audit; manual audit before tagging |

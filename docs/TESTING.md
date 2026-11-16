@@ -54,11 +54,14 @@ Expected findings (planted bugs) are asserted, so the suite stays green.
 
 ## Determinism checks in CI
 
-Every CI job prints the trace hashes of the declared portable fixture
-(`scripts/fixture_hashes.py`). A follow-up job compares them
-(`scripts/compare_fixture_hashes.py`): different operating systems with the
-same Python minor version must agree; differences across minor versions are
-reported. Locally the fixture is byte-identical on 3.11, 3.12 and 3.13.
+Every CI job records the trace hashes (and uploads the traces) of the
+declared portable fixture (`scripts/fixture_hashes.py --dump`). A follow-up job
+compares them (`scripts/compare_fixture_hashes.py`): every pair of operating
+systems with the same Python minor version must agree; differences across
+minor versions are reported. This gate caught a real leak before release —
+errno numbers in exception text differ between Linux, macOS and Windows — which
+is now canonicalized. At release the fixture is byte-identical across all 12
+jobs (3 operating systems × 4 Python versions).
 
 ## Reproducing a CI failure
 

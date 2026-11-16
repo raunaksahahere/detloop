@@ -28,20 +28,22 @@ def main() -> int:
         by_version[r["python"]].append(r)
     reference: dict[str, dict[str, str]] = {}
     for version, group in sorted(by_version.items()):
-        base = group[0]
-        for other in group[1:]:
-            for fixture, hashes in base["fixtures"].items():
-                theirs = other["fixtures"].get(fixture, {})
-                diff = sorted(k for k in hashes if hashes[k] != theirs.get(k))
-                if diff:
-                    failed = True
-                    print(
-                        f"MISMATCH python {version}: {base['platform']} vs {other['platform']} "
-                        f"{fixture} seeds {diff[:10]}"
-                    )
+        mismatched = False
+        for i, a in enumerate(group):
+            for b in group[i + 1 :]:
+                for fixture, hashes in a["fixtures"].items():
+                    theirs = b["fixtures"].get(fixture, {})
+                    diff = sorted(k for k in hashes if hashes[k] != theirs.get(k))
+                    if diff:
+                        failed = mismatched = True
+                        print(
+                            f"MISMATCH python {version}: {a['platform']} vs {b['platform']} "
+                            f"{fixture} seeds {diff[:10]}"
+                        )
         platforms = ", ".join(sorted(r["platform"] for r in group))
-        print(f"python {version}: {len(group)} job(s) [{platforms}] agree" if not failed else "")
-        reference[version] = base["fixtures"]
+        if not mismatched:
+            print(f"python {version}: {len(group)} job(s) [{platforms}] agree")
+        reference[version] = group[0]["fixtures"]
     versions = sorted(reference)
     for i, a in enumerate(versions):
         for b in versions[i + 1 :]:

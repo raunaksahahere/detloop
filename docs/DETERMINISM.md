@@ -127,10 +127,18 @@ changes interleaving decisions. CI therefore:
 
 - runs the full suite on 3.11–3.14 × Linux/macOS/Windows;
 - computes trace hashes of the **declared portable fixture**
-  (`tests/sim_targets.py::test_portable_fixture`, fifo scheduler, seeds 0–19)
-  in every job and asserts they are identical across operating systems for the
-  same Python version, and reports (without failing) differences across
-  Python versions.
+  (`tests/sim_targets.py::test_portable_fixture`: fifo scheduler, two nodes,
+  partitions/crashes/resets/latency faults, connection errors recorded in the
+  history; seeds 0–19) in every job and asserts that every pair of operating
+  systems agrees for the same Python version, and reports (without failing)
+  differences across Python versions.
+
+Result at release (CI run for commit `160132b`): the fixture is byte-identical
+for all 20 seeds across all 12 jobs — Linux, macOS and Windows × CPython 3.11,
+3.12, 3.13 and 3.14. This is evidence for this fixture, not a promise for
+arbitrary workloads: code whose callback counts differ between asyncio
+versions (for example under the `interleave` scheduler, the KV example) gets
+different interleavings on 3.11 than on 3.12+.
 
 Pinned regression seeds are declared per runtime family (3.11 vs 3.12+).
 
