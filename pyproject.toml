@@ -1,0 +1,148 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "detloop"
+dynamic = ["version"]
+description = "Deterministic simulation testing for Python asyncio: virtual time, simulated networks, fault injection, one-seed replay"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "raunaksahahere" }]
+keywords = ["asyncio", "testing", "deterministic-simulation", "distributed-systems", "fault-injection", "linearizability", "pytest"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+# The runtime has no third-party dependencies (standard library only).
+dependencies = []
+
+[project.optional-dependencies]
+# Libraries exercised by the compatibility suite (tests/compat). Pinned ranges
+# are the ones actually tested; see docs/COMPATIBILITY.md.
+compat = [
+    "aiohttp>=3.10,<4",
+    "httpx>=0.27,<0.29",
+]
+
+[project.urls]
+Homepage = "https://github.com/raunaksahahere/detloop"
+Documentation = "https://github.com/raunaksahahere/detloop/tree/main/docs"
+Issues = "https://github.com/raunaksahahere/detloop/issues"
+Changelog = "https://github.com/raunaksahahere/detloop/blob/main/CHANGELOG.md"
+
+[project.scripts]
+detloop = "detloop.cli:main"
+
+[project.entry-points.pytest11]
+detloop = "detloop.pytest_plugin"
+
+[dependency-groups]
+test = [
+    "pytest>=8.3",
+    "hypothesis>=6.100",
+]
+lint = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+release = [
+    "build>=1.2",
+    "twine>=6.0",
+    "pip-licenses>=5.0",
+]
+dev = [
+    { include-group = "test" },
+    { include-group = "lint" },
+    { include-group = "release" },
+]
+
+[tool.hatch.version]
+path = "src/detloop/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/detloop"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/examples",
+    "/docs",
+    "/scripts",
+    "/benchmarks/README.md",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/SECURITY.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+exclude = ["*.pdf", "**/__pycache__", "**/.detloop"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "slow: long-running exploration tests",
+    "compat: third-party library compatibility tests (need the 'compat' extra)",
+]
+filterwarnings = [
+    "error::pytest.PytestUnraisableExceptionWarning",
+    "error::ResourceWarning",
+]
+xfail_strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "PT", "S", "C4", "PIE", "RET"]
+ignore = [
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",  # complexity heuristics; reviewed manually
+    "S101",     # assert is the test idiom
+    "S311",     # PRNG use is intentional: simulation randomness, not cryptography
+    "RET505", "RET506",
+    "SIM108",
+    "PLW0603",  # module-level state is limited to guards and explicitly documented
+    "RUF012",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PLR", "B011", "PT011", "PT012", "SIM117", "RUF001", "RUF006", "PLC0415", "B018", "E501"]
+"examples/**" = ["S", "PLC0415"]
+"benchmarks/**" = ["S", "PLC0415", "T20"]
+"scripts/**" = ["S", "PLC0415", "T20"]
+"src/detloop/examples/**" = ["S104"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/detloop"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["detloop.pytest_plugin"]
+disallow_untyped_decorators = false
+
+[tool.coverage.run]
+source = ["detloop"]
+branch = true
