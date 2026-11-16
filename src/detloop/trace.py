@@ -27,8 +27,12 @@ _ERRNO_RE = re.compile(r"\[Errno (\d+)\]")
 
 
 def _errno_name(m: re.Match[str]) -> str:
-    # errno numbers are host-specific (ECONNREFUSED is 111 on Linux, 61 on macOS)
-    return f"[Errno {errno.errorcode.get(int(m.group(1)), m.group(1))}]"
+    # errno numbers are host-specific: ECONNREFUSED is 111 on Linux, 61 on macOS
+    # and 10061 (named WSAECONNREFUSED) on Windows.
+    name = errno.errorcode.get(int(m.group(1)), m.group(1))
+    if name.startswith("WSAE"):
+        name = name[3:]
+    return f"[Errno {name}]"
 
 
 _MAX_TEXT = 2000
